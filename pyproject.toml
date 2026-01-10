@@ -1,0 +1,91 @@
+[tool.poetry]
+name = "ai-learning-system"
+version = "0.1.0"
+description = "A hyper-personal AI learning system integrating Ultralearning, Learning How to Learn, and Feynman Technique"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+# API Framework
+fastapi = "^0.109.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+# CLI
+typer = {extras = ["all"], version = "^0.9.0"}
+rich = "^13.7.0"
+# Database (Railway PostgreSQL)
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.25"}
+asyncpg = "^0.29.0"
+pgvector = "^0.2.4"
+alembic = "^1.13.1"
+# Redis (Railway Redis)
+redis = {extras = ["hiredis"], version = "^5.0.1"}
+# Authentication
+pyjwt = "^2.8.0"
+bcrypt = "^4.1.2"
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+# LLM
+anthropic = "^0.18.0"
+# Validation & Settings
+pydantic = "^2.5.3"
+pydantic-settings = "^2.1.0"
+# HTTP Client
+httpx = "^0.26.0"
+# Content Processing
+feedparser = "^6.0.10"
+arxiv = "^2.1.0"
+beautifulsoup4 = "^4.12.3"
+# Utilities
+python-dotenv = "^1.0.0"
+tenacity = "^8.2.3"
+structlog = "^24.1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.4"
+pytest-asyncio = "^0.23.3"
+pytest-cov = "^4.1.0"
+black = "^24.1.0"
+ruff = "^0.1.14"
+mypy = "^1.8.0"
+pre-commit = "^3.6.0"
+respx = "^0.20.2"
+
+[tool.poetry.scripts]
+learn = "src.cli.main:app"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | \.mypy_cache
+  | __pycache__
+  | migrations
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+exclude = [".git", ".venv", "__pycache__", "migrations"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --cov=src --cov-report=term-missing"
