@@ -152,12 +152,13 @@ class AgentOrchestrator(IAgentOrchestrator):
             if response.menu_options:
                 state.context["menu_options"] = {
                     opt.number: {
-                        "agent": opt.agent,
+                        "agent": opt.agent.value,  # Store as string for serialization safety
                         "action": opt.action,
                         "label": opt.label,
                     }
                     for opt in response.menu_options
                 }
+                logger.debug(f"Stored menu_options: {state.context['menu_options']}")
 
             # Store pending suggestion as fallback for ambiguous inputs
             if response.suggested_next_agent:
@@ -530,6 +531,7 @@ class AgentOrchestrator(IAgentOrchestrator):
 
         # 1. Check if this is a menu selection (e.g., user typed "1", "2", "3")
         menu_options = state.context.get("menu_options", {})
+        logger.debug(f"Checking menu_options: {menu_options}, user input: '{msg}'")
         if msg in menu_options:
             option = menu_options[msg]
             # Clear menu after selection
@@ -538,8 +540,14 @@ class AgentOrchestrator(IAgentOrchestrator):
             # Store selected action for the target agent to use
             if option.get("action"):
                 state.context["selected_action"] = option["action"]
-            logger.info(f"Menu selection '{msg}' -> {option['agent']} (action: {option.get('action')})")
-            return option["agent"]
+
+            # Convert string back to AgentType enum (stored as string for serialization)
+            agent = option["agent"]
+            if isinstance(agent, str):
+                agent = AgentType(agent)
+
+            logger.info(f"Menu selection '{msg}' -> {agent} (action: {option.get('action')})")
+            return agent
 
         # 2. For other ambiguous inputs, use pending suggestion from previous agent
         if self._is_ambiguous_input(msg):

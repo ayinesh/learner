@@ -710,22 +710,33 @@ You're all set! I'll help keep you motivated and on track. Would you like to:
         """
         import re
 
-        # Look for numbered options (1. 2. 3. etc)
-        pattern = r"^(\d)\.\s+\*?\*?(.+?)(?:\*\*)?(?:\s*[-–—]\s*(.+))?$"
         options = []
 
         for line in message.split("\n"):
-            match = re.match(pattern, line.strip())
+            line = line.strip()
+            if not line:
+                continue
+
+            # More flexible pattern to handle various LLM output formats:
+            # - Handles leading/trailing whitespace (via strip above)
+            # - Handles 0-2 asterisks for bold formatting
+            # - Handles various dash types (hyphen, en-dash, em-dash) or colon as separator
+            # - Makes description optional
+            match = re.match(r'^(\d)\.\s+\*{0,2}(.+?)\*{0,2}(?:\s*[-–—:]\s*(.+))?$', line)
             if match:
                 number = match.group(1)
-                label = match.group(2).strip().replace("**", "")
+                label = match.group(2).strip().replace("**", "").replace("*", "")
                 # Map common keywords to agents
                 agent = self._infer_agent_from_label(label)
                 options.append(MenuOption(number, label, agent))
+                logger.debug(f"Parsed menu option: {number} -> {label} -> {agent}")
 
         # Only return if we found 2-4 valid options
         if 2 <= len(options) <= 4:
+            logger.debug(f"Successfully parsed {len(options)} menu options")
             return options
+
+        logger.debug(f"Menu parsing found {len(options)} options (need 2-4), returning None")
         return None
 
     def _infer_agent_from_label(self, label: str) -> AgentType:
