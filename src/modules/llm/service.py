@@ -1,5 +1,6 @@
 """LLM Service - Anthropic Claude API wrapper."""
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator
@@ -172,8 +173,27 @@ class LLMService:
         if name in self._prompt_cache:
             return self._prompt_cache[name]
 
-        prompts_dir = Path(__file__).parent.parent.parent / "prompts"
+        # Security: Validate template name to prevent path traversal attacks
+        # Only allow alphanumeric, underscores, hyphens, and forward slashes for subdirectories
+        if not re.match(r'^[a-zA-Z0-9_/\-]+$', name):
+            raise ValueError(f"Invalid template name: {name}. Only alphanumeric, underscore, hyphen, and slash allowed.")
+
+        # Security: Prevent path traversal attempts
+        if '..' in name or name.startswith('/') or name.startswith('\\'):
+            raise ValueError(f"Invalid template name: {name}. Path traversal not allowed.")
+
+        # Go up from llm -> modules -> src -> project root
+        prompts_dir = Path(__file__).parent.parent.parent.parent / "prompts"
         template_path = prompts_dir / f"{name}.txt"
+
+        # Security: Ensure resolved path is within prompts directory
+        try:
+            resolved_path = template_path.resolve()
+            prompts_resolved = prompts_dir.resolve()
+            if not str(resolved_path).startswith(str(prompts_resolved)):
+                raise ValueError(f"Invalid template path: {name}. Must be within prompts directory.")
+        except (OSError, ValueError) as e:
+            raise ValueError(f"Invalid template name: {name}") from e
 
         if not template_path.exists():
             raise FileNotFoundError(f"Prompt template not found: {name}")

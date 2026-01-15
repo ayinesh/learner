@@ -7,6 +7,8 @@ from enum import Enum
 from typing import Any, Protocol
 from uuid import UUID
 
+from src.shared.datetime_utils import utc_now
+
 
 class AgentType(str, Enum):
     """Types of learning agents."""
@@ -34,6 +36,21 @@ class AgentContext:
 
 
 @dataclass
+class MenuOption:
+    """Represents a numbered option presented to the user.
+
+    When agents present menus with numbered options (e.g., "1. Learn concepts"),
+    they should include MenuOption objects so the orchestrator can route
+    numeric inputs correctly.
+    """
+
+    number: str  # "1", "2", "3"
+    label: str  # "Learn about ML concepts"
+    agent: AgentType  # Target agent if this option is selected
+    action: str | None = None  # Optional action hint for the target agent
+
+
+@dataclass
 class AgentResponse:
     """Response from an agent."""
 
@@ -41,8 +58,9 @@ class AgentResponse:
     message: str
     data: dict = field(default_factory=dict)  # Structured data (e.g., quiz, plan)
     suggested_next_agent: AgentType | None = None
+    menu_options: list[MenuOption] | None = None  # Numbered options for routing
     end_conversation: bool = False
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=utc_now)
 
 
 @dataclass

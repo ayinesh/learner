@@ -70,10 +70,10 @@ class SessionSummary:
     duration_minutes: int
     activities_completed: int
     topics_covered: list[str]
-    quiz_score: float | None = None
-    feynman_score: float | None = None
     content_consumed: int
     new_gaps_identified: list[str]
+    quiz_score: float | None = None
+    feynman_score: float | None = None
     streak_updated: bool = False
     next_session_preview: str | None = None
 

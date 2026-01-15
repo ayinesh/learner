@@ -1,9 +1,12 @@
 """Database connection and session management for Railway PostgreSQL + Redis."""
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 import redis.asyncio as redis
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -14,6 +17,7 @@ from sqlalchemy.orm import DeclarativeBase
 from src.shared.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 # ===================
@@ -31,35 +35,50 @@ class Base(DeclarativeBase):
 # PostgreSQL (Railway)
 # ===================
 
-_engine = None
-_session_factory = None
+# Store engine per event loop ID to avoid cross-loop connection issues
+_engines: dict[int, object] = {}
+_session_factories: dict[int, object] = {}
+
+
+def _get_loop_id() -> int:
+    """Get current event loop ID for tracking connections."""
+    try:
+        loop = asyncio.get_running_loop()
+        return id(loop)
+    except RuntimeError:
+        # No running loop - use 0 as fallback
+        return 0
 
 
 def get_engine():
-    """Get SQLAlchemy async engine."""
-    global _engine
-    if _engine is None:
-        _engine = create_async_engine(
+    """Get SQLAlchemy async engine for current event loop."""
+    global _engines
+    loop_id = _get_loop_id()
+
+    if loop_id not in _engines or _engines[loop_id] is None:
+        _engines[loop_id] = create_async_engine(
             settings.database_url,
-            echo=settings.is_development,
+            echo=False,  # Disable SQL logging (was too verbose for CLI)
             pool_pre_ping=True,
             pool_size=5,
             max_overflow=10,
         )
-    return _engine
+    return _engines[loop_id]
 
 
 def get_session_factory():
-    """Get SQLAlchemy session factory."""
-    global _session_factory
-    if _session_factory is None:
+    """Get SQLAlchemy session factory for current event loop."""
+    global _session_factories
+    loop_id = _get_loop_id()
+
+    if loop_id not in _session_factories or _session_factories[loop_id] is None:
         engine = get_engine()
-        _session_factory = async_sessionmaker(
+        _session_factories[loop_id] = async_sessionmaker(
             engine,
             class_=AsyncSession,
             expire_on_commit=False,
         )
-    return _session_factory
+    return _session_factories[loop_id]
 
 
 @asynccontextmanager
@@ -74,7 +93,12 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with factory() as session:
         try:
             yield session
-            await session.commit()
+            try:
+                await session.commit()
+            except Exception:
+                # Rollback if commit itself fails to prevent connection leak
+                await session.rollback()
+                raise
         except Exception:
             await session.rollback()
             raise
@@ -98,10 +122,15 @@ async def close_db() -> None:
 
     Call this on application shutdown.
     """
-    global _engine
-    if _engine is not None:
-        await _engine.dispose()
-        _engine = None
+    global _engines, _session_factories
+    for loop_id, engine in list(_engines.items()):
+        if engine is not None:
+            try:
+                await engine.dispose()
+            except Exception:
+                pass  # Ignore errors during cleanup
+    _engines.clear()
+    _session_factories.clear()
 
 
 # ===================
@@ -135,8 +164,19 @@ async def close_redis() -> None:
     """
     global _redis_pool
     if _redis_pool is not None:
-        await _redis_pool.disconnect()
-        _redis_pool = None
+        try:
+            # Properly close all connections in the pool
+            await _redis_pool.aclose()
+        except AttributeError:
+            # Fallback for older redis versions without aclose()
+            try:
+                await _redis_pool.disconnect()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.warning(f"Error closing Redis pool: {e}")
+        finally:
+            _redis_pool = None
 
 
 # ===================
@@ -144,19 +184,90 @@ async def close_redis() -> None:
 # ===================
 
 
+async def check_db_health(max_retries: int = 3, retry_delay: float = 1.0) -> bool:
+    """Check database health with retries.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        retry_delay: Delay between retries in seconds
+
+    Returns:
+        True if database is healthy, False otherwise
+    """
+    for attempt in range(max_retries):
+        try:
+            engine = get_engine()
+            async with engine.begin() as conn:
+                await conn.execute(text("SELECT 1"))
+            logger.debug("Database health check passed")
+            return True
+        except Exception as e:
+            logger.warning(f"Database health check failed (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+    return False
+
+
+async def check_redis_health(max_retries: int = 3, retry_delay: float = 1.0) -> bool:
+    """Check Redis health with retries.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        retry_delay: Delay between retries in seconds
+
+    Returns:
+        True if Redis is healthy, False otherwise
+    """
+    for attempt in range(max_retries):
+        try:
+            redis_client = await get_redis()
+            await redis_client.ping()
+            logger.debug("Redis health check passed")
+            return True
+        except Exception as e:
+            logger.warning(f"Redis health check failed (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+    return False
+
+
+async def get_health_status() -> dict:
+    """Get health status of all database connections.
+
+    Returns:
+        Dictionary with health status for each connection
+    """
+    db_healthy = await check_db_health(max_retries=1, retry_delay=0)
+    redis_healthy = await check_redis_health(max_retries=1, retry_delay=0)
+
+    return {
+        "database": {
+            "healthy": db_healthy,
+            "type": "postgresql",
+        },
+        "redis": {
+            "healthy": redis_healthy,
+            "type": "redis",
+        },
+        "overall": db_healthy and redis_healthy,
+    }
+
+
 async def startup() -> None:
     """Initialize all connections on application startup."""
-    # Verify database connection
-    engine = get_engine()
-    async with engine.begin() as conn:
-        await conn.execute("SELECT 1")
+    # Verify database connection with retries
+    if not await check_db_health(max_retries=5, retry_delay=2.0):
+        raise RuntimeError("Failed to connect to database after retries")
 
-    # Verify Redis connection
-    redis_client = await get_redis()
-    await redis_client.ping()
+    # Verify Redis connection with retries
+    if not await check_redis_health(max_retries=5, retry_delay=2.0):
+        raise RuntimeError("Failed to connect to Redis after retries")
+
+    logger.info("All database connections initialized successfully")
 
 
 async def shutdown() -> None:
     """Close all connections on application shutdown."""
     await close_db()
     await close_redis()
+    logger.info("All database connections closed")

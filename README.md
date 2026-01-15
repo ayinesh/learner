@@ -8,6 +8,7 @@ A hyper-personal AI learning system that guides you through structured learning 
 - **50/50 Production/Consumption**: Balances reading with active practice
 - **Feynman Dialogues**: AI "confused student" that probes your understanding
 - **Retrieval Practice**: Spaced repetition quizzes that strengthen memory
+- **Semantic Content Discovery**: pgvector-powered similarity search finds relevant content
 - **Adaptive System**: Adjusts pace, difficulty, and curriculum based on your progress
 - **Multi-Source Content**: Aggregates from arXiv, Twitter, YouTube, newsletters, blogs, GitHub, Reddit, Discord
 
@@ -15,18 +16,20 @@ A hyper-personal AI learning system that guides you through structured learning 
 
 - **Backend**: Python 3.11+ with FastAPI
 - **CLI**: Typer with Rich
-- **Database**: Railway PostgreSQL with pgvector
-- **Cache/Sessions**: Railway Redis
+- **Database**: Neon PostgreSQL (serverless) with pgvector
+- **Cache**: Redis (Upstash recommended for production)
 - **Auth**: JWT (bcrypt + pyjwt)
 - **LLM**: Anthropic Claude API
+- **Vector Search**: pgvector for semantic similarity
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
-- Poetry
-- Railway account (or local Docker for PostgreSQL + Redis)
+- Poetry (or pip)
+- Neon account (free)
+- Anthropic API key
 
 ### Installation
 
@@ -36,96 +39,78 @@ git clone <repo-url>
 cd ai-learning-system
 
 # Install dependencies
-make install
+pip install sqlalchemy asyncpg python-dotenv bcrypt pyjwt anthropic
 
 # Copy environment template
 cp .env.example .env
 
-# Edit .env with your credentials (see Railway Setup below)
+# Edit .env with your credentials (see Neon Setup below)
 ```
 
-### Railway Setup
+### Neon Setup
 
-1. **Create Railway Project**
-   - Go to [railway.app](https://railway.app)
-   - Create new project
-   - Add PostgreSQL service
-   - Add Redis service
+1. **Create Neon Account**
+   - Go to [neon.tech](https://neon.tech)
+   - Sign up (free tier includes 512MB storage)
 
-2. **Get Connection Strings**
-   - Click on PostgreSQL → Variables → Copy `DATABASE_URL`
-   - Click on Redis → Variables → Copy `REDIS_URL`
-   - Update `.env`:
+2. **Create New Project**
+   - Click "New Project"
+   - Name: `ai-learning-system`
+   - Region: Choose closest to you
+   - Click "Create Project"
+
+3. **Get Connection String**
+   - After project creation, you'll see the connection string
+   - Or go to Dashboard → Connection Details
+   - Copy the connection string
+   - Add `+asyncpg` after `postgresql`:
      ```
-     DATABASE_URL=postgresql+asyncpg://...  # Add +asyncpg after postgresql
-     REDIS_URL=redis://...
+     postgresql+asyncpg://user:pass@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require
      ```
 
-3. **Run Database Migration**
-   - In Railway, click PostgreSQL → Data → SQL Editor
-   - Copy and run contents of `migrations/001_initial_schema.sql`
-
-4. **Enable pgvector Extension**
-   - The migration script includes `CREATE EXTENSION vector`
-   - If it fails, contact Railway support to enable pgvector
-
-5. **Generate JWT Secret**
-   ```bash
-   openssl rand -hex 32
+4. **Update .env**
    ```
-   Add to `.env` as `JWT_SECRET_KEY`
+   DATABASE_URL=postgresql+asyncpg://user:pass@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require
+   ```
 
-### Local Development (Alternative)
+5. **Run Migration**
+   ```bash
+   python migrate.py
+   ```
 
-If you prefer local development:
+### Redis Setup (Optional for MVP)
 
+For production, use Upstash Redis:
+1. Go to [upstash.com](https://upstash.com)
+2. Create free Redis database
+3. Copy the connection string to `.env`
+
+For local development:
 ```bash
-# Start PostgreSQL with pgvector
-docker run -d \
-  --name postgres-vectors \
-  -e POSTGRES_PASSWORD=password \
-  -e POSTGRES_DB=ai_learning \
-  -p 5432:5432 \
-  ankane/pgvector
+# Docker
+docker run -d --name redis -p 6379:6379 redis:alpine
 
-# Start Redis
-docker run -d \
-  --name redis \
-  -p 6379:6379 \
-  redis:alpine
-
-# Update .env
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/ai_learning
+# Or skip Redis for MVP (caching disabled)
 REDIS_URL=redis://localhost:6379
-
-# Run migration
-psql -h localhost -U postgres -d ai_learning -f migrations/001_initial_schema.sql
 ```
 
 ### Usage
 
 ```bash
 # See all commands
-learn --help
+python -m src.cli.main --help
 
 # Start a learning session
-learn start
-
-# Start with specific time
-learn start --time 30
+python -m src.cli.main start
 
 # Take a quiz
-learn quiz
+python -m src.cli.main quiz
 
 # Feynman dialogue on a topic
-learn explain "attention mechanisms"
+python -m src.cli.main explain "attention mechanisms"
 
 # View progress
-learn progress
-
-# Login/Register
-learn auth login
-learn auth register
+python -m src.cli.main progress
 ```
 
 ## Project Structure
@@ -136,7 +121,7 @@ ai-learning-system/
 │   ├── modules/
 │   │   ├── auth/         # JWT Authentication
 │   │   ├── user/         # User profiles & preferences
-│   │   ├── content/      # Content ingestion & processing
+│   │   ├── content/      # Content ingestion & vector search
 │   │   ├── session/      # Learning session management
 │   │   ├── assessment/   # Quizzes & Feynman dialogues
 │   │   ├── adaptation/   # Learning pattern analysis
@@ -155,20 +140,6 @@ ai-learning-system/
 
 ## Development
 
-### Commands
-
-```bash
-make install      # Install dependencies
-make dev          # Run CLI in dev mode
-make api          # Run API server
-make test         # Run all tests
-make test-unit    # Run unit tests only
-make lint         # Check code style
-make format       # Format code
-make typecheck    # Run type checker
-make check        # Run all checks
-```
-
 ### Parallel Development
 
 This project is designed for parallel development using multiple Claude Code agents. See `CLAUDE_AGENTS.md` for setup instructions.
@@ -180,13 +151,46 @@ This project is designed for parallel development using multiple Claude Code age
 3. Register in `ContentService`
 4. Add configuration schema
 
-### Adding a New Agent
+### Vector Search
 
-1. Create agent class in `src/modules/agents/`
-2. Inherit from `BaseAgent`
-3. Define system prompt
-4. Register in `AgentOrchestrator`
-5. Create prompt template in `prompts/`
+Content embeddings are stored using pgvector:
+
+```python
+# Store embedding
+content.embedding = await llm_service.get_embedding(content.summary)
+
+# Find similar content
+similar = await session.execute(
+    select(Content)
+    .order_by(Content.embedding.cosine_distance(query_embedding))
+    .limit(10)
+)
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | Yes | Claude API key |
+| `DATABASE_URL` | Yes | Neon PostgreSQL URL (with +asyncpg and sslmode=require) |
+| `REDIS_URL` | No | Redis URL (optional for MVP) |
+| `JWT_SECRET_KEY` | Yes | Secret for JWT signing |
+| `LOG_LEVEL` | No | Logging level (default: INFO) |
+| `DEFAULT_SESSION_MINUTES` | No | Default session length (default: 30) |
+
+### Content Sources
+
+Configure sources during onboarding or via CLI:
+
+- **arXiv**: Paper categories (cs.AI, cs.LG, etc.)
+- **Twitter/X**: Accounts or lists to follow
+- **YouTube**: Channels to monitor
+- **RSS**: Newsletter and blog feeds
+- **GitHub**: Repos or topics to track
+- **Reddit**: Subreddits
+- **Discord**: Server webhooks
 
 ## Architecture
 
@@ -211,59 +215,6 @@ The system uses specialized AI agents orchestrated to appear as one coherent ass
 - **Coach Agent**: Motivation, session management
 - **Scout Agent**: Monitors AI ecosystem for relevant content
 - **Drill Sergeant Agent**: Targets weak spots with practice
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | Claude API key |
-| `DATABASE_URL` | Yes | Railway PostgreSQL URL (with +asyncpg) |
-| `REDIS_URL` | Yes | Railway Redis URL |
-| `JWT_SECRET_KEY` | Yes | Secret for JWT signing |
-| `LOG_LEVEL` | No | Logging level (default: INFO) |
-| `DEFAULT_SESSION_MINUTES` | No | Default session length (default: 30) |
-
-### Content Sources
-
-Configure sources during onboarding or via `learn sources --add`:
-
-- **arXiv**: Paper categories (cs.AI, cs.LG, etc.)
-- **Twitter/X**: Accounts or lists to follow
-- **YouTube**: Channels to monitor
-- **RSS**: Newsletter and blog feeds
-- **GitHub**: Repos or topics to track
-- **Reddit**: Subreddits
-- **Discord**: Server webhooks
-
-## Deployment
-
-### Railway Deployment
-
-1. Connect your GitHub repo to Railway
-2. Railway auto-detects Python and creates a service
-3. Add environment variables in Railway dashboard
-4. Deploy!
-
-```bash
-# railway.json (optional, for custom config)
-{
-  "build": {
-    "builder": "nixpacks"
-  },
-  "deploy": {
-    "startCommand": "poetry run uvicorn src.api.main:app --host 0.0.0.0 --port $PORT"
-  }
-}
-```
-
-## Contributing
-
-1. Read `CLAUDE_AGENTS.md` for development workflow
-2. Follow interface contracts in `*/interface.py`
-3. Write tests for new functionality
-4. Run `make check` before submitting PR
 
 ## License
 

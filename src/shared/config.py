@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str
 
+    # OpenAI (for embeddings)
+    openai_api_key: str | None = None
+
     # Railway PostgreSQL
     database_url: str
 
@@ -54,6 +57,13 @@ class Settings(BaseSettings):
     github_token: str | None = None
     reddit_client_id: str | None = None
     reddit_client_secret: str | None = None
+    reddit_user_agent: str | None = None
+
+    # Feature Flags (can also be set via FF_* env vars)
+    ff_use_database_persistence: bool = False
+    ff_enable_nlp_commands: bool = False
+    ff_enable_real_embeddings: bool = False
+    ff_enable_background_jobs: bool = False
 
     @property
     def is_development(self) -> bool:

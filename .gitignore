@@ -1,3 +1,9 @@
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.env
+
 # Python
 __pycache__/
 *.py[cod]
@@ -21,14 +27,10 @@ wheels/
 *.egg
 
 # Virtual environments
-.env
-.venv
-env/
 venv/
 ENV/
-
-# Poetry
-poetry.lock
+env/
+.venv/
 
 # IDE
 .idea/
@@ -36,6 +38,9 @@ poetry.lock
 *.swp
 *.swo
 *~
+.project
+.pydevproject
+.settings/
 
 # Testing
 .pytest_cache/
@@ -43,25 +48,42 @@ poetry.lock
 htmlcov/
 .tox/
 .nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
 
-# Type checking
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter
+.ipynb_checkpoints/
+
+# mypy
 .mypy_cache/
 .dmypy.json
 dmypy.json
 
-# Linting
-.ruff_cache/
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Project specific
-*.log
-*.sqlite
-*.db
-
-# Secrets (never commit these!)
-.env.local
-.env.*.local
-secrets/
+# Credentials and keys (never commit these)
+*.pem
+*.key
+*.crt
+credentials.json
+secrets.json
+service-account.json
