@@ -145,3 +145,15 @@ CORS_PREFLIGHT_MAX_AGE_SECONDS = 600  # 10 minutes
 DISTRIBUTED_LOCK_TTL_SECONDS = 30
 DISTRIBUTED_LOCK_RETRY_DELAY_SECONDS = 0.1
 DISTRIBUTED_LOCK_MAX_RETRIES = 50
+
+
+# ===================
+# Conversation Context
+# ===================
+
+# Number of recent exchanges to include in LLM context (sliding window)
+# Higher = more context but more tokens; Lower = less tokens but more amnesia
+CONTEXT_HISTORY_WINDOW_SIZE = 10
+
+# Maximum characters for context summary injection
+CONTEXT_SUMMARY_MAX_CHARS = 500

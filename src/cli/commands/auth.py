@@ -59,18 +59,41 @@ def validate_email(email: str) -> bool:
     return bool(re.match(pattern, email))
 
 
+# Common passwords that should be rejected
+_COMMON_PASSWORDS = {
+    "password", "12345678", "qwertyui", "letmein1", "welcome1",
+    "password1", "admin123", "changeme", "testtest", "trustno1",
+}
+
+
 def validate_password(password: str) -> tuple[bool, str]:
     """Validate password strength.
+
+    Requirements (must match API validation in src/api/schemas/auth.py):
+    - At least 8 characters, max 128
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one digit
+    - At least one special character
+    - Not in common passwords list
 
     Returns:
         Tuple of (is_valid, error_message)
     """
     if len(password) < 8:
         return False, "Password must be at least 8 characters"
+    if len(password) > 128:
+        return False, "Password must be at most 128 characters"
     if not re.search(r"[A-Z]", password):
         return False, "Password must contain at least one uppercase letter"
+    if not re.search(r"[a-z]", password):
+        return False, "Password must contain at least one lowercase letter"
     if not re.search(r"[0-9]", password):
-        return False, "Password must contain at least one number"
+        return False, "Password must contain at least one digit"
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;\'`~]', password):
+        return False, "Password must contain at least one special character"
+    if password.lower() in _COMMON_PASSWORDS:
+        return False, "Password is too common. Please choose a stronger password."
     return True, ""
 
 
@@ -188,15 +211,52 @@ def login() -> None:
             expires_in=result.tokens.expires_in,
         )
 
-        console.print(f"\n[green]Welcome back![/green] Logged in as [cyan]{email}[/cyan]")
+        # Load user's previous session state for personalized welcome
+        from src.modules.session.restoration_service import get_restoration_service
 
-        # Check if onboarding is needed
-        from src.modules.user import get_user_service
-        user_service = get_user_service()
-        profile = run_async(user_service.get_profile(result.user_id))
+        restoration_service = get_restoration_service()
+        welcome_ctx = run_async(restoration_service.get_welcome_context(result.user_id))
 
-        if profile and not profile.onboarding_completed:
-            console.print("\n[yellow]Tip:[/yellow] Complete your profile with 'learner profile onboarding'")
+        # Display personalized welcome message
+        console.print()  # Blank line before welcome
+
+        if welcome_ctx.primary_goal:
+            # User has learning history - show personalized welcome
+            console.print(f"[green]Welcome back![/green] Logged in as [cyan]{email}[/cyan]")
+            console.print(f"\n[bold]Learning goal:[/bold] {welcome_ctx.primary_goal}")
+
+            if welcome_ctx.learning_progress > 0:
+                progress_pct = int(welcome_ctx.learning_progress * 100)
+                console.print(f"[bold]Progress:[/bold] {progress_pct}%")
+
+            if welcome_ctx.current_focus:
+                console.print(f"[bold]Current focus:[/bold] {welcome_ctx.current_focus}")
+
+            if welcome_ctx.current_streak > 0:
+                streak_emoji = "🔥" if welcome_ctx.current_streak >= 3 else ""
+                streak_warning = " [yellow](at risk!)[/yellow]" if welcome_ctx.streak_at_risk else ""
+                console.print(f"\n[bold]Streak:[/bold] {welcome_ctx.current_streak} days {streak_emoji}{streak_warning}")
+
+            if welcome_ctx.needs_recovery:
+                console.print(f"\n[yellow]It's been {welcome_ctx.days_since_last_session} days since your last session.[/yellow]")
+                console.print("[dim]Let's ease back in with a recovery session![/dim]")
+
+            if welcome_ctx.has_active_session:
+                console.print("\n[cyan]You have an active session in progress.[/cyan]")
+                console.print("[dim]Run 'learner start' to resume.[/dim]")
+            else:
+                console.print("\n[dim]Run 'learner start' to continue learning.[/dim]")
+        else:
+            # New user or no learning history
+            console.print(f"[green]Welcome back![/green] Logged in as [cyan]{email}[/cyan]")
+
+            # Check if onboarding is needed
+            from src.modules.user import get_user_service
+            user_service = get_user_service()
+            profile = run_async(user_service.get_profile(result.user_id))
+
+            if profile and not profile.onboarding_completed:
+                console.print("\n[yellow]Tip:[/yellow] Complete your profile with 'learner profile onboarding'")
 
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")

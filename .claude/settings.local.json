@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone:*)",
+      "Bash(copy \"D:\\Study\\App\\Learner\\.env\" \"D:\\Study\\App\\Learner-agent-a\\.env\")",
+      "Bash(copy \"D:\\Study\\App\\Learner\\.env\" \"D:\\Study\\App\\Learner-agent-b\\.env\")",
+      "Bash(copy \"D:\\Study\\App\\Learner\\.env\" \"D:\\Study\\App\\Learner-agent-c\\.env\")",
+      "Bash(tree:*)",
+      "Bash(dir /s \"D:\\Study\\App\\Learner\\src\")",
+      "Bash(mkdir:*)",
+      "Bash(python -m src.cli.main:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python:*)",
+      "Bash(cat:*)",
+      "Bash(pip install:*)",
+      "Bash(wc -l \"D:\\Study\\App\\Learner\\src\"/**/*.py)",
+      "Bash(if not exist \"D:\\Study\\App\\Learner\\src\\api\\middleware\" mkdir \"D:\\Study\\App\\Learner\\src\\api\\middleware\")",
+      "Bash(echo:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(dir:*)",
+      "Bash(cd:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd comprehensive security hardening and complete application implementation\n\nSecurity Fixes:\n- Add .gitignore to prevent credential exposure (.env, __pycache__, etc.)\n- Fix SQL injection vulnerabilities in test files (parameterized queries)\n- Add path traversal protection to LLM service template loading\n- Strengthen password validation (uppercase, lowercase, digit, special char, common password check)\n- Fix CORS configuration with restricted methods and headers\n- Fix timing attack prevention with real bcrypt dummy hash\n- Fix email enumeration (generic error messages)\n- Add security headers middleware (X-Content-Type-Options, X-Frame-Options, CSP, HSTS, etc.)\n- Add distributed locking to prevent race conditions in state store\n- Tighten rate limits on auth endpoints (3-10 requests/hour)\n- Fix Redis connection pool cleanup\n\nCode Quality:\n- Add timezone-aware datetime utilities (utc_now, ensure_utc)\n- Extract magic numbers to centralized constants module\n- Standardize error handling with LearnerException hierarchy\n- Enhance request ID tracing (accept incoming X-Request-ID headers)\n\nFeatures:\n- Complete agent orchestration system with menu option routing\n- Add MenuOption dataclass for proper numeric input handling\n- Implement all learning agents (Coach, Curriculum, Socratic, Assessment, Scout, DrillSergeant)\n- Add session management with planning and activity tracking\n- Add content ingestion with multiple source adapters\n- Add vector search and embeddings support\n- Add CLI interface with NLP command parsing\n- Add Docker and docker-compose configuration\n- Add Alembic migrations\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(git remote add:*)",
+      "Bash(grep:*)",
+      "Bash(del \"D:\\Study\\App\\Learner\\FLY_DEPLOY.md\")",
+      "Bash(del \"D:\\Study\\App\\Learner\\fly.toml\")",
+      "WebSearch"
+    ]
+  }
+}

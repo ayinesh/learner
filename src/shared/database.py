@@ -60,8 +60,10 @@ def get_engine():
             settings.database_url,
             echo=False,  # Disable SQL logging (was too verbose for CLI)
             pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+            pool_timeout=settings.db_pool_timeout,
+            pool_recycle=settings.db_pool_recycle,
         )
     return _engines[loop_id]
 

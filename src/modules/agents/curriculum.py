@@ -16,6 +16,10 @@ from src.modules.agents.interface import (
 )
 from src.modules.agents.learning_context import OnboardingState, SharedLearningContext
 from src.modules.agents.context_service import get_context_service
+from src.modules.agents.context_builder import (
+    ConversationContextBuilder,
+    build_agent_system_prompt,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 
@@ -561,8 +565,11 @@ Ready to start?"""
         """Handle progress review request."""
         state = self._get_user_learning_state(context.user_id, context)
 
-        # Generate progress summary
-        prompt = f"""
+        # Use context builder for conversation awareness
+        ctx_builder = ConversationContextBuilder(context)
+
+        # Build progress summary prompt with history context
+        progress_info = f"""
         Summarize the user's learning progress:
         - Current phase: {state.current_phase}
         - Strong areas: {state.strong_areas}
@@ -572,9 +579,16 @@ Ready to start?"""
         Provide a brief, encouraging summary with 1-2 actionable suggestions.
         """
 
-        response = await self._llm.complete(
-            prompt=prompt,
-            system_prompt="You are a supportive learning coach reviewing progress.",
+        # Include conversation history for continuity
+        messages = ctx_builder.build_messages(progress_info)
+        enhanced_system = build_agent_system_prompt(
+            "You are a supportive learning coach reviewing progress.",
+            context,
+        )
+
+        response = await self._llm.complete_with_history(
+            messages=messages,
+            system_prompt=enhanced_system,
             temperature=0.7,
         )
 
@@ -593,6 +607,12 @@ Ready to start?"""
         # Get shared learning context
         learning_ctx = context.additional_data.get("learning_context")
 
+        # Get onboarding state FIRST so we can check completion status
+        context_service = get_context_service()
+        onboarding = await context_service.get_onboarding_state(
+            context.user_id, "curriculum"
+        )
+
         # Check if this looks like a topic/goal statement that needs onboarding
         message_lower = user_message.lower()
         is_topic_statement = (
@@ -600,20 +620,23 @@ Ready to start?"""
             not any(kw in message_lower for kw in ["plan", "path", "next", "progress", "how", "what", "?"])
         )
 
-        # If it's a topic statement (like "Machine learning"), check for onboarding
-        if is_topic_statement or self._needs_onboarding(learning_ctx):
-            # Check if there's an active onboarding session
-            context_service = get_context_service()
-            onboarding = await context_service.get_onboarding_state(
-                context.user_id, "curriculum"
-            )
+        # CRITICAL FIX: Check if this is a continuation message (like "ok lets get started")
+        # If so, don't treat it as a new topic that needs onboarding
+        is_continuation = self._is_continuation_message(user_message)
 
+        # Check if onboarding is needed - pass onboarding state for completion check
+        needs_onboarding = self._needs_onboarding(learning_ctx, onboarding)
+
+        # If it's a topic statement (like "Machine learning"), check for onboarding
+        # But skip if it's a continuation message and onboarding is already complete
+        if (is_topic_statement or needs_onboarding) and not (is_continuation and onboarding and onboarding.is_complete):
             # If onboarding is in progress, continue it
             if onboarding and not onboarding.is_complete:
                 return await self._handle_onboarding(context, user_message, learning_ctx)
 
             # If no onboarding and this looks like a new topic, start onboarding
-            if is_topic_statement and self._needs_onboarding(learning_ctx):
+            # CRITICAL FIX: Don't restart onboarding for continuation messages
+            if is_topic_statement and needs_onboarding and not is_continuation:
                 # Set the topic as primary goal first
                 if learning_ctx:
                     await context_service.set_primary_goal(context.user_id, user_message)
@@ -624,8 +647,8 @@ Ready to start?"""
 
         # Determine intent for non-onboarding queries
         if any(kw in message_lower for kw in ["plan", "path", "curriculum", "schedule"]):
-            # Check if we need to gather info first
-            if self._needs_onboarding(learning_ctx):
+            # Check if we need to gather info first - pass onboarding state
+            if self._needs_onboarding(learning_ctx, onboarding):
                 return await self._handle_onboarding(context, user_message, learning_ctx)
             return await self._handle_path_generation(context)
         elif any(kw in message_lower for kw in ["next", "what should", "recommend"]):
@@ -633,26 +656,19 @@ Ready to start?"""
         elif any(kw in message_lower for kw in ["progress", "how am i", "status"]):
             return await self._handle_progress_review(context)
         else:
-            # Get shared learning context for personalized response
-            primary_goal = learning_ctx.primary_goal if learning_ctx else None
-            current_focus = learning_ctx.current_focus if learning_ctx else None
+            # Use ConversationContextBuilder for context-aware LLM calls
+            ctx_builder = ConversationContextBuilder(context)
 
-            # Generic curriculum help - but with context awareness
-            prompt = f"""
-            The user asked about their curriculum: "{user_message}"
+            # Build enhanced system prompt with what we already know
+            enhanced_system = build_agent_system_prompt(self.system_prompt, context)
 
-            User's learning context:
-            - Primary goal: {primary_goal or "Not set yet"}
-            - Current focus: {current_focus or "Not set yet"}
+            # Build messages with conversation history
+            messages = ctx_builder.build_messages(user_message)
 
-            Provide helpful guidance about their learning path.
-            Keep your response relevant to their stated goal if they have one.
-            If they're asking about a specific topic (like math), explain how it relates to their primary goal.
-            """
-
-            response = await self._llm.complete(
-                prompt=prompt,
-                system_prompt=self.system_prompt,
+            # Use complete_with_history for multi-turn awareness
+            response = await self._llm.complete_with_history(
+                messages=messages,
+                system_prompt=enhanced_system,
                 temperature=0.7,
             )
 
@@ -673,26 +689,95 @@ Ready to start?"""
     # Conversational Onboarding Flow
     # ===================
 
-    def _needs_onboarding(self, learning_ctx: SharedLearningContext | None) -> bool:
+    def _needs_onboarding(
+        self,
+        learning_ctx: SharedLearningContext | None,
+        onboarding_state: OnboardingState | None = None,
+    ) -> bool:
         """Check if user needs onboarding before generating a curriculum.
 
-        Onboarding is needed when we don't have enough info to create a path.
+        Onboarding is needed when we don't have enough info to create a path
+        AND onboarding hasn't already been completed.
+
+        Args:
+            learning_ctx: The shared learning context with user data
+            onboarding_state: The onboarding state tracking completion status
+
+        Returns:
+            True if onboarding is needed, False otherwise
         """
+        # CRITICAL FIX: If onboarding was already completed, don't restart it
+        if onboarding_state and onboarding_state.is_complete:
+            return False
+
         if not learning_ctx:
             return True
 
         # If we have a complete learning path already, no need
-        if learning_ctx.learning_path and len(learning_ctx.learning_path) >= 3:
+        # Reduced threshold from 3 to 1 - any learning path means onboarding is done
+        if learning_ctx.learning_path and len(learning_ctx.learning_path) >= 1:
             return False
 
         # Check if we have minimum required info
         has_goal = bool(learning_ctx.primary_goal)
-        has_constraints = bool(learning_ctx.constraints.get("timeline") or
-                               learning_ctx.constraints.get("motivation"))
+
+        # FIXED: Check ALL relevant constraint fields, not just timeline/motivation
+        constraints = learning_ctx.constraints or {}
+        has_constraints = bool(
+            constraints.get("timeline") or
+            constraints.get("motivation") or
+            constraints.get("programming_background") or
+            constraints.get("math_background")
+        )
+
         has_preferences = bool(learning_ctx.preferences.get("learning_style"))
 
         # Need onboarding if missing key info
         return not (has_goal and has_constraints and has_preferences)
+
+    def _is_continuation_message(self, message: str) -> bool:
+        """Check if message is a continuation/affirmation rather than a new topic.
+
+        Continuation messages indicate the user wants to proceed with the current
+        flow rather than start something new.
+
+        Args:
+            message: The user's message
+
+        Returns:
+            True if this is a continuation message, False if it's a potential new topic
+        """
+        message_lower = message.lower().strip()
+
+        # Common continuation/affirmation patterns
+        continuation_patterns = [
+            "ok", "okay", "yes", "yeah", "yep", "sure", "go ahead",
+            "let's go", "lets go", "let's start", "lets start",
+            "let's get started", "lets get started",
+            "let's begin", "lets begin", "start", "begin",
+            "ready", "i'm ready", "im ready",
+            "continue", "proceed", "next",
+            "sounds good", "perfect", "great", "good",
+            "do it", "go for it", "let's do it", "lets do it",
+            "no lets get started", "no let's get started",
+            "ok lets get started then", "ok let's get started then",
+        ]
+
+        # Check exact match or prefix match
+        if message_lower in continuation_patterns:
+            return True
+
+        # Check if starts with common affirmation prefixes
+        affirmation_prefixes = ["ok ", "yes ", "sure ", "no "]
+        if any(message_lower.startswith(p) for p in affirmation_prefixes):
+            # Check if what follows is also a continuation pattern
+            for prefix in affirmation_prefixes:
+                if message_lower.startswith(prefix):
+                    remainder = message_lower[len(prefix):].strip()
+                    if remainder in continuation_patterns or remainder.startswith("let"):
+                        return True
+
+        return False
 
     async def _handle_onboarding(
         self,

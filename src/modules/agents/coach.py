@@ -18,6 +18,10 @@ from src.modules.agents.interface import (
     MenuOption,
 )
 from src.modules.agents.learning_context import OnboardingState
+from src.modules.agents.context_builder import (
+    ConversationContextBuilder,
+    build_agent_system_prompt,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 logger = logging.getLogger(__name__)
@@ -616,34 +620,42 @@ You're all set! I'll help keep you motivated and on track. Would you like to:
         user_message: str,
     ) -> AgentResponse:
         """Handle motivation and encouragement with shared context awareness."""
+        # Use context builder for conversation history awareness
+        ctx_builder = ConversationContextBuilder(context)
+
         # Get shared learning context for personalized motivation
         learning_ctx = context.additional_data.get("learning_context")
         primary_goal = learning_ctx.primary_goal if learning_ctx else None
         current_focus = learning_ctx.current_focus if learning_ctx else None
 
-        prompt = f"""
-        The user is expressing difficulty or frustration with their learning:
-        "{user_message}"
+        motivation_prompt = f"""
+        The user is expressing difficulty or frustration with their learning.
 
         User context:
         - Primary learning goal: {primary_goal or "Not set yet"}
         - Current focus area: {current_focus or "Not set yet"}
         - Current streak: {context.current_progress.get("streak", 0)} days
-        - Recent progress: {context.current_progress.get("recent_progress", "unknown")}
 
         Generate a supportive, encouraging response that:
         1. Acknowledges their feelings
         2. Normalizes the struggle (learning is hard)
-        3. Connects to their stated goal if they have one ("{primary_goal or 'their learning journey'}")
-        4. Offers a concrete small step forward related to their current focus
+        3. Connects to their stated goal if they have one
+        4. Offers a concrete small step forward
         5. Reminds them of their progress
 
         Keep it brief (3-4 sentences) and genuine, not saccharine.
         """
 
-        response = await self._llm.complete(
-            prompt=prompt,
-            system_prompt="You are a supportive learning coach. Be warm but not over-the-top.",
+        # Build messages with full conversation history
+        messages = ctx_builder.build_messages(user_message)
+        enhanced_system = build_agent_system_prompt(
+            f"You are a supportive learning coach. Be warm but not over-the-top.\n\n{motivation_prompt}",
+            context,
+        )
+
+        response = await self._llm.complete_with_history(
+            messages=messages,
+            system_prompt=enhanced_system,
             temperature=0.7,
         )
 
@@ -659,33 +671,35 @@ You're all set! I'll help keep you motivated and on track. Would you like to:
         user_message: str,
     ) -> AgentResponse:
         """Handle general coaching interactions with shared context awareness."""
-        # Get shared learning context for personalized coaching
-        learning_ctx = context.additional_data.get("learning_context")
-        primary_goal = learning_ctx.primary_goal if learning_ctx else None
-        current_focus = learning_ctx.current_focus if learning_ctx else None
+        # Use context builder for conversation history awareness
+        ctx_builder = ConversationContextBuilder(context)
 
-        prompt = f"""
-        The user says: "{user_message}"
+        # Get what we already know to avoid re-asking
+        what_we_know = ctx_builder.get_what_we_know()
 
-        You are their learning coach. Respond helpfully based on:
-        - Their primary goal: {primary_goal or "Not set yet - help them define one!"}
-        - Current focus area: {current_focus or "Not set yet"}
-        - Current streak: {context.current_progress.get("streak", 0)} days
-        - Learning path: {context.current_progress.get("learning_path", [])}
+        coaching_instructions = f"""
+        You are a supportive learning coach.
 
-        Important: If they mention a topic or goal, acknowledge it in the context of their overall learning journey.
-        If they say "I want to learn X", recognize this as their goal.
-        Be brief, supportive, and action-oriented.
+        {what_we_know}
 
-        If offering choices, format them as numbered options like:
-        1. **First option** - brief description
-        2. **Second option** - brief description
-        3. **Third option** - brief description
+        Important guidelines:
+        - If user mentions a topic or goal, acknowledge it in context of their journey
+        - If they say "I want to learn X", recognize this as their goal
+        - Be brief, supportive, and action-oriented
+        - Do NOT re-ask questions that have already been answered above
+        - If offering choices, format as numbered options:
+          1. **First option** - brief description
+          2. **Second option** - brief description
+          3. **Third option** - brief description
         """
 
-        response = await self._llm.complete(
-            prompt=prompt,
-            system_prompt="You are a supportive learning coach. Keep responses brief and helpful.",
+        # Build messages with full conversation history
+        messages = ctx_builder.build_messages(user_message)
+        enhanced_system = build_agent_system_prompt(coaching_instructions, context)
+
+        response = await self._llm.complete_with_history(
+            messages=messages,
+            system_prompt=enhanced_system,
             temperature=0.7,
         )
 

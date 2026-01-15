@@ -313,8 +313,18 @@ async def ingest_content(
         )
 
     except Exception as e:
+        # Security: Don't expose internal error details in production
+        # Log the full error for debugging, return generic message to client
+        import logging
+        from src.shared.config import get_settings
+        logger = logging.getLogger(__name__)
+        logger.error(f"Content ingestion failed: {e}", exc_info=True)
+
+        settings = get_settings()
+        error_message = str(e) if settings.is_development else "Content ingestion failed"
+
         return IngestContentResponse(
             success=False,
             items_ingested=0,
-            errors=[str(e)],
+            errors=[error_message],
         )

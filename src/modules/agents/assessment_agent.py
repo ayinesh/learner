@@ -17,6 +17,10 @@ from src.modules.agents.interface import (
     MenuOption,
 )
 from src.modules.agents.learning_context import OnboardingState
+from src.modules.agents.context_builder import (
+    ConversationContextBuilder,
+    build_agent_system_prompt,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 logger = logging.getLogger(__name__)
@@ -757,39 +761,23 @@ class AssessmentAgent(BaseAgent):
         context: AgentContext,
         user_message: str,
     ) -> AgentResponse:
-        """Handle providing general assessment feedback."""
-        # Get shared learning context for personalized feedback
-        learning_ctx = context.additional_data.get("learning_context")
+        """Handle providing general assessment feedback with conversation awareness."""
+        # Use context builder for conversation history awareness
+        ctx_builder = ConversationContextBuilder(context)
 
-        context_info = ""
-        if learning_ctx:
-            if learning_ctx.primary_goal:
-                context_info += f"- Their goal: {learning_ctx.primary_goal}\n"
-            if learning_ctx.current_focus:
-                context_info += f"- Currently studying: {learning_ctx.current_focus}\n"
-            if learning_ctx.proficiency_levels:
-                # Show their proficiency levels
-                prof_str = ", ".join(
-                    f"{topic}: {level:.0%}"
-                    for topic, level in list(learning_ctx.proficiency_levels.items())[:5]
-                )
-                if prof_str:
-                    context_info += f"- Proficiency levels: {prof_str}\n"
-            if learning_ctx.identified_gaps:
-                context_info += f"- Areas needing work: {', '.join(learning_ctx.identified_gaps[:3])}\n"
+        # Build enhanced system prompt with what we know
+        enhanced_system = build_agent_system_prompt(
+            "You are a helpful assessment advisor. Be encouraging but honest. "
+            "Provide specific and actionable feedback about their progress.",
+            context,
+        )
 
-        prompt = f"""
-        The user is asking about their assessment: "{user_message}"
+        # Build messages with full conversation history
+        messages = ctx_builder.build_messages(user_message)
 
-        {f"User context:{chr(10)}{context_info}" if context_info else ""}
-
-        Provide helpful, encouraging feedback about their progress.
-        Be specific and actionable, referencing their goals and current focus when relevant.
-        """
-
-        response = await self._llm.complete(
-            prompt=prompt,
-            system_prompt="You are a helpful assessment advisor. Be encouraging but honest.",
+        response = await self._llm.complete_with_history(
+            messages=messages,
+            system_prompt=enhanced_system,
             temperature=0.7,
         )
 

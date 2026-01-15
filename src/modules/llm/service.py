@@ -182,16 +182,37 @@ class LLMService:
         if '..' in name or name.startswith('/') or name.startswith('\\'):
             raise ValueError(f"Invalid template name: {name}. Path traversal not allowed.")
 
+        # Security: Block Windows drive letters and UNC paths
+        if ':' in name or name.startswith('\\\\'):
+            raise ValueError(f"Invalid template name: {name}. Absolute paths not allowed.")
+
+        # Security: Block consecutive slashes which could bypass checks
+        if '//' in name:
+            raise ValueError(f"Invalid template name: {name}. Consecutive slashes not allowed.")
+
         # Go up from llm -> modules -> src -> project root
         prompts_dir = Path(__file__).parent.parent.parent.parent / "prompts"
         template_path = prompts_dir / f"{name}.txt"
 
         # Security: Ensure resolved path is within prompts directory
         try:
-            resolved_path = template_path.resolve()
-            prompts_resolved = prompts_dir.resolve()
-            if not str(resolved_path).startswith(str(prompts_resolved)):
+            resolved_path = template_path.resolve(strict=False)
+            prompts_resolved = prompts_dir.resolve(strict=False)
+
+            # Use os.path.commonpath for robust containment check
+            import os
+            try:
+                common = os.path.commonpath([str(resolved_path), str(prompts_resolved)])
+                if common != str(prompts_resolved):
+                    raise ValueError(f"Invalid template path: {name}. Must be within prompts directory.")
+            except ValueError:
+                # commonpath raises ValueError if paths are on different drives (Windows)
                 raise ValueError(f"Invalid template path: {name}. Must be within prompts directory.")
+
+            # Security: Block symlinks to prevent symlink attacks
+            if resolved_path.exists() and resolved_path.is_symlink():
+                raise ValueError(f"Invalid template path: {name}. Symlinks not allowed.")
+
         except (OSError, ValueError) as e:
             raise ValueError(f"Invalid template name: {name}") from e
 

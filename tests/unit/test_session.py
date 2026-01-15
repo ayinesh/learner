@@ -418,3 +418,117 @@ class TestSessionSummary:
 
         assert "concept X" in summary.new_gaps_identified
         assert "concept Y" in summary.new_gaps_identified
+
+
+class TestSessionRestorationService:
+    """Tests for SessionRestorationService - session state restoration on login."""
+
+    def test_welcome_context_defaults(self):
+        """Test that WelcomeContext has sensible defaults."""
+        from src.modules.session.restoration_service import WelcomeContext
+
+        ctx = WelcomeContext()
+
+        assert ctx.has_active_session is False
+        assert ctx.active_session_id is None
+        assert ctx.primary_goal is None
+        assert ctx.current_focus is None
+        assert ctx.learning_progress == 0.0
+        assert ctx.current_streak == 0
+        assert ctx.needs_recovery is False
+
+    def test_welcome_context_with_values(self):
+        """Test WelcomeContext with populated values."""
+        from src.modules.session.restoration_service import WelcomeContext
+
+        ctx = WelcomeContext(
+            has_active_session=True,
+            primary_goal="Learn ML",
+            current_focus="Linear algebra",
+            learning_progress=0.45,
+            current_streak=5,
+            streak_at_risk=True,
+            days_since_last_session=1,
+            needs_recovery=False,
+        )
+
+        assert ctx.has_active_session is True
+        assert ctx.primary_goal == "Learn ML"
+        assert ctx.learning_progress == 0.45
+        assert ctx.current_streak == 5
+        assert ctx.streak_at_risk is True
+
+    def test_format_welcome_message_new_user(self):
+        """Test welcome message for new user with no history."""
+        from src.modules.session.restoration_service import (
+            SessionRestorationService,
+            WelcomeContext,
+        )
+
+        service = SessionRestorationService()
+        ctx = WelcomeContext()  # Empty context for new user
+
+        message = service.format_welcome_message(ctx, "test@example.com")
+
+        assert "test@example.com" in message
+        assert "Welcome back" in message
+
+    def test_format_welcome_message_returning_user(self):
+        """Test welcome message for user with learning history."""
+        from src.modules.session.restoration_service import (
+            SessionRestorationService,
+            WelcomeContext,
+        )
+
+        service = SessionRestorationService()
+        ctx = WelcomeContext(
+            primary_goal="Machine Learning",
+            current_focus="Neural networks",
+            learning_progress=0.35,
+            current_streak=7,
+        )
+
+        message = service.format_welcome_message(ctx, "user@example.com")
+
+        assert "user@example.com" in message
+        assert "Machine Learning" in message
+        assert "35%" in message
+        assert "7 days" in message
+
+    def test_format_welcome_message_recovery_needed(self):
+        """Test welcome message when recovery is needed."""
+        from src.modules.session.restoration_service import (
+            SessionRestorationService,
+            WelcomeContext,
+        )
+
+        service = SessionRestorationService()
+        ctx = WelcomeContext(
+            primary_goal="Python",
+            days_since_last_session=5,
+            needs_recovery=True,
+        )
+
+        message = service.format_welcome_message(ctx, "user@example.com")
+
+        assert "5 days" in message
+        assert "recovery" in message.lower()
+
+    def test_format_welcome_message_active_session(self):
+        """Test welcome message when there's an active session."""
+        from src.modules.session.restoration_service import (
+            SessionRestorationService,
+            WelcomeContext,
+        )
+
+        service = SessionRestorationService()
+        ctx = WelcomeContext(
+            has_active_session=True,
+            active_session_id=uuid4(),
+            primary_goal="Data Science",
+        )
+
+        message = service.format_welcome_message(ctx, "user@example.com")
+
+        assert "active session" in message.lower()
+        assert "learner start" in message.lower()

@@ -35,6 +35,7 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python dependencies from builder
@@ -53,9 +54,9 @@ RUN mkdir -p /app/logs /app/data && \
 # Switch to non-root user
 USER appuser
 
-# Health check
+# Health check using curl (more reliable than Python requests)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:${PORT}/health', timeout=5)" || exit 1
+    CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Expose port
 EXPOSE ${PORT}

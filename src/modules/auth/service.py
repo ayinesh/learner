@@ -15,6 +15,7 @@ from src.modules.auth.models import (
     RefreshTokenModel,
     UserModel,
 )
+from src.shared.audit import AuditEvent, audit_log
 from src.shared.config import get_settings
 from src.shared.database import get_db_session, get_redis
 
@@ -112,6 +113,12 @@ class AuthService:
             if existing_user:
                 # Security: Use generic error message to prevent email enumeration
                 # Attacker shouldn't be able to determine if an email is registered
+                audit_log(
+                    AuditEvent.REGISTER_FAILED,
+                    email=email,
+                    success=False,
+                    reason="email_exists",
+                )
                 return AuthResult(success=False, error="Registration failed. Please try again or contact support.")
 
             # Create user
@@ -138,6 +145,12 @@ class AuthService:
 
             await session.commit()
 
+            audit_log(
+                AuditEvent.REGISTER_SUCCESS,
+                user_id=new_user.id,
+                email=email,
+            )
+
             return AuthResult(
                 success=True,
                 user_id=new_user.id,
@@ -163,12 +176,25 @@ class AuthService:
                 self._verify_password(password, self._DUMMY_PASSWORD_HASH)
                 password_valid = False
 
-            if not user or not password_valid:
-                return AuthResult(success=False, error="Invalid credentials")
+            # Security: Use same generic error message for all auth failures
+            # This prevents user enumeration and timing attacks
+            if not user or not password_valid or not user.is_active:
+                # Determine reason for audit log (internal use only)
+                if not user:
+                    audit_reason = "user_not_found"
+                elif not password_valid:
+                    audit_reason = "invalid_password"
+                else:
+                    audit_reason = "account_inactive"
 
-            # Check if user is active
-            if not user.is_active:
-                return AuthResult(success=False, error="Account is deactivated")
+                audit_log(
+                    AuditEvent.LOGIN_FAILED,
+                    user_id=user.id if user else None,
+                    email=email,
+                    success=False,
+                    reason=audit_reason,
+                )
+                return AuthResult(success=False, error="Invalid credentials")
 
             # Generate tokens
             tokens = self._create_token_pair(user.id)
@@ -187,6 +213,12 @@ class AuthService:
             user.last_login = datetime.now(timezone.utc)
 
             await session.commit()
+
+            audit_log(
+                AuditEvent.LOGIN_SUCCESS,
+                user_id=user.id,
+                email=email,
+            )
 
             return AuthResult(
                 success=True,
@@ -301,6 +333,12 @@ class AuthService:
 
             # Verify current password
             if not self._verify_password(current_password, user.password_hash):
+                audit_log(
+                    AuditEvent.PASSWORD_CHANGE_FAILED,
+                    user_id=user_id,
+                    success=False,
+                    reason="invalid_current_password",
+                )
                 return AuthResult(success=False, error="Invalid current password")
 
             # Update password
@@ -313,7 +351,21 @@ class AuthService:
                 .values(revoked=True)
             )
 
+            # Security: Also invalidate any pending password reset tokens
+            # This prevents old reset tokens from being used after password change
+            await session.execute(
+                update(PasswordResetTokenModel)
+                .where(PasswordResetTokenModel.user_id == user_id)
+                .where(PasswordResetTokenModel.used == False)
+                .values(used=True)
+            )
+
             await session.commit()
+
+            audit_log(
+                AuditEvent.PASSWORD_CHANGE_SUCCESS,
+                user_id=user_id,
+            )
 
             return AuthResult(success=True, user_id=user_id)
 
@@ -341,6 +393,12 @@ class AuthService:
                 session.add(reset_token_model)
                 await session.commit()
 
+                audit_log(
+                    AuditEvent.PASSWORD_RESET_REQUESTED,
+                    user_id=user.id,
+                    email=email,
+                )
+
                 # TODO: Send email with reset_token
                 # In production, you would send an email here:
                 # await email_service.send_password_reset(email, reset_token)
@@ -362,12 +420,29 @@ class AuthService:
             token_model = result.scalar_one_or_none()
 
             if not token_model:
+                audit_log(
+                    AuditEvent.PASSWORD_RESET_FAILED,
+                    success=False,
+                    reason="invalid_token",
+                )
                 return AuthResult(success=False, error="Invalid reset token")
 
             if token_model.used:
+                audit_log(
+                    AuditEvent.PASSWORD_RESET_FAILED,
+                    user_id=token_model.user_id,
+                    success=False,
+                    reason="token_already_used",
+                )
                 return AuthResult(success=False, error="Token already used")
 
             if token_model.expires_at < datetime.now(timezone.utc):
+                audit_log(
+                    AuditEvent.PASSWORD_RESET_FAILED,
+                    user_id=token_model.user_id,
+                    success=False,
+                    reason="token_expired",
+                )
                 return AuthResult(success=False, error="Token has expired")
 
             # Get user
@@ -393,6 +468,11 @@ class AuthService:
             )
 
             await session.commit()
+
+            audit_log(
+                AuditEvent.PASSWORD_RESET_SUCCESS,
+                user_id=user.id,
+            )
 
             return AuthResult(success=True, user_id=user.id)
 

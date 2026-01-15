@@ -16,6 +16,10 @@ from src.modules.agents.interface import (
     BaseAgent,
 )
 from src.modules.agents.learning_context import OnboardingState
+from src.modules.agents.context_builder import (
+    ConversationContextBuilder,
+    build_agent_system_prompt,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 logger = logging.getLogger(__name__)
@@ -920,38 +924,26 @@ Accuracy: {accuracy:.0%}
             context.additional_data["action"] = "create_drill"
             return await self._handle_drill_creation(context)
         else:
-            # Get shared learning context for personalized responses
-            learning_ctx = context.additional_data.get("learning_context")
+            # Use context builder for conversation history awareness
+            ctx_builder = ConversationContextBuilder(context)
 
-            context_info = ""
-            if learning_ctx:
-                if learning_ctx.primary_goal:
-                    context_info += f"- Their goal: {learning_ctx.primary_goal}\n"
-                if learning_ctx.current_focus:
-                    context_info += f"- Currently working on: {learning_ctx.current_focus}\n"
-                if learning_ctx.identified_gaps:
-                    context_info += f"- Known weaknesses: {', '.join(learning_ctx.identified_gaps[:3])}\n"
-                if learning_ctx.proficiency_levels:
-                    weak_areas = [
-                        topic for topic, level in learning_ctx.proficiency_levels.items()
-                        if level < 0.5
-                    ][:3]
-                    if weak_areas:
-                        context_info += f"- Low proficiency areas: {', '.join(weak_areas)}\n"
-
-            prompt = f"""
-            The user is asking about practice: "{user_message}"
-
-            {f"User context:{chr(10)}{context_info}" if context_info else ""}
-
-            Help them understand what kind of practice would be most effective.
+            # Build enhanced system prompt with drill sergeant instructions
+            drill_instructions = """
             Be direct and no-nonsense (drill sergeant style).
             Focus on their weaknesses and what will help them reach their goal.
+            Don't repeat questions that have already been answered.
             """
+            enhanced_system = build_agent_system_prompt(
+                f"{self.system_prompt}\n\n{drill_instructions}",
+                context,
+            )
 
-            response = await self._llm.complete(
-                prompt=prompt,
-                system_prompt=self.system_prompt,
+            # Build messages with full conversation history
+            messages = ctx_builder.build_messages(user_message)
+
+            response = await self._llm.complete_with_history(
+                messages=messages,
+                system_prompt=enhanced_system,
                 temperature=0.7,
             )
 

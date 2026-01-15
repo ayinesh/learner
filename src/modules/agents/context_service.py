@@ -79,6 +79,19 @@ class LearningContextService:
 
         return SharedLearningContext(user_id=user_id)
 
+    # Explicit field mapping to prevent SQL injection
+    # Each field maps to its exact SQL update clause
+    _FIELD_UPDATE_TEMPLATES = {
+        "primary_goal": ("primary_goal = :primary_goal", "text"),
+        "current_focus": ("current_focus = :current_focus", "text"),
+        "learning_path": ("learning_path = CAST(:learning_path AS jsonb)", "jsonb"),
+        "preferences": ("preferences = CAST(:preferences AS jsonb)", "jsonb"),
+        "recent_topics": ("recent_topics = :recent_topics", "array"),
+        "identified_gaps": ("identified_gaps = :identified_gaps", "array"),
+        "constraints": ("constraints = CAST(:constraints AS jsonb)", "jsonb"),
+        "proficiency_levels": ("proficiency_levels = CAST(:proficiency_levels AS jsonb)", "jsonb"),
+    }
+
     async def update_context(
         self,
         user_id: UUID,
@@ -92,42 +105,32 @@ class LearningContextService:
 
         Returns:
             Updated SharedLearningContext
-        """
-        # Validate and prepare updates
-        allowed_fields = {
-            "primary_goal",
-            "current_focus",
-            "learning_path",
-            "preferences",
-            "recent_topics",
-            "identified_gaps",
-            "constraints",
-            "proficiency_levels",
-        }
 
-        valid_updates = {k: v for k, v in updates.items() if k in allowed_fields}
+        Security:
+            Uses explicit field mapping to prevent SQL injection.
+            Only fields defined in _FIELD_UPDATE_TEMPLATES can be updated.
+        """
+        # Filter to only allowed fields using explicit mapping
+        valid_updates = {k: v for k, v in updates.items() if k in self._FIELD_UPDATE_TEMPLATES}
 
         if not valid_updates:
             return await self.get_context(user_id)
 
-        # Build dynamic update query
+        # Build query using explicit templates (no dynamic field names)
         set_clauses = []
-        params = {"user_id": user_id}
+        params: dict[str, Any] = {"user_id": user_id}
 
         for field, value in valid_updates.items():
-            if field in ("learning_path", "preferences", "constraints", "proficiency_levels"):
-                # JSONB fields - use CAST() instead of :: to avoid parameter confusion
-                set_clauses.append(f"{field} = CAST(:{field} AS jsonb)")
+            template, field_type = self._FIELD_UPDATE_TEMPLATES[field]
+            set_clauses.append(template)
+
+            # Serialize value based on field type
+            if field_type == "jsonb":
                 params[field] = json.dumps(value) if not isinstance(value, str) else value
-            elif field in ("recent_topics", "identified_gaps"):
-                # TEXT[] fields
-                set_clauses.append(f"{field} = :{field}")
-                params[field] = value
             else:
-                # TEXT fields
-                set_clauses.append(f"{field} = :{field}")
                 params[field] = value
 
+        # Query is safe because set_clauses only contains pre-defined templates
         query = f"""
             UPDATE user_learning_context
             SET {', '.join(set_clauses)}, updated_at = NOW()

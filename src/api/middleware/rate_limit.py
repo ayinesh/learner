@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 CLEANUP_PROBABILITY = RATE_LIMIT_CLEANUP_PROBABILITY
 CLEANUP_MAX_AGE_SECONDS = RATE_LIMIT_CLEANUP_MAX_AGE_SECONDS
 
+# Maximum number of IP records to store (prevents unbounded memory growth)
+MAX_IP_RECORDS = 10000
+
 
 @dataclass
 class RateLimitConfig:
@@ -208,6 +211,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if random.random() < CLEANUP_PROBABILITY:
             self._cleanup_old_records(current_time)
 
+        # Emergency cleanup if we exceed max IP records
+        if len(self._ip_records) > MAX_IP_RECORDS:
+            self._emergency_cleanup(current_time)
+
         # Check if currently blocked
         if record.blocked_until > current_time:
             retry_after = record.blocked_until - current_time
@@ -272,6 +279,45 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 f"Rate limiter cleanup: removed {len(ips_to_remove)} IPs, "
                 f"{endpoints_removed} endpoint records"
             )
+
+    def _emergency_cleanup(self, current_time: float) -> None:
+        """Emergency cleanup when max IP records exceeded.
+
+        Removes oldest IP records to bring count below MAX_IP_RECORDS.
+        This is a more aggressive cleanup than probabilistic cleanup.
+
+        Args:
+            current_time: Current timestamp
+        """
+        logger.warning(
+            f"Rate limiter emergency cleanup triggered: {len(self._ip_records)} IPs "
+            f"(max: {MAX_IP_RECORDS})"
+        )
+
+        # Calculate how many IPs to remove (remove 20% to avoid frequent cleanups)
+        target_count = int(MAX_IP_RECORDS * 0.8)
+        to_remove = len(self._ip_records) - target_count
+
+        if to_remove <= 0:
+            return
+
+        # Find oldest IPs based on most recent activity
+        ip_last_activity: list[tuple[str, float]] = []
+        for ip in self._ip_records:
+            last_activity = 0.0
+            for record in self._ip_records[ip].values():
+                if record.timestamps:
+                    last_activity = max(last_activity, max(record.timestamps))
+            ip_last_activity.append((ip, last_activity))
+
+        # Sort by last activity (oldest first)
+        ip_last_activity.sort(key=lambda x: x[1])
+
+        # Remove oldest IPs
+        for ip, _ in ip_last_activity[:to_remove]:
+            del self._ip_records[ip]
+
+        logger.info(f"Rate limiter emergency cleanup: removed {to_remove} IPs")
 
     def clear_records(self, client_ip: str | None = None):
         """Clear rate limit records.

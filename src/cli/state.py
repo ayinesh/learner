@@ -77,7 +77,11 @@ class StateManager:
         return self._state
 
     def save(self, state: CLIState) -> None:
-        """Save state to disk."""
+        """Save state to disk with restricted permissions.
+
+        Security: The state file contains sensitive tokens and is written
+        with mode 0600 (read/write for owner only) on Unix systems.
+        """
         self._state = state
         data = {
             "user_id": str(state.user_id) if state.user_id else None,
@@ -90,7 +94,39 @@ class StateManager:
                 else None
             ),
         }
-        self._state_file.write_text(json.dumps(data, indent=2))
+
+        # Write with restricted permissions (0600 on Unix)
+        content = json.dumps(data, indent=2)
+
+        if os.name != "nt":  # Unix-like systems
+            # Create file with restricted permissions
+            import stat
+            # First write to temp file, then atomic rename
+            temp_file = self._state_file.with_suffix('.tmp')
+            try:
+                # Remove temp file if it exists
+                if temp_file.exists():
+                    temp_file.unlink()
+
+                # Create with restricted permissions
+                fd = os.open(str(temp_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+                try:
+                    os.write(fd, content.encode('utf-8'))
+                finally:
+                    os.close(fd)
+
+                # Atomic rename
+                temp_file.rename(self._state_file)
+            except Exception:
+                # Fallback to regular write if atomic write fails
+                if temp_file.exists():
+                    temp_file.unlink()
+                self._state_file.write_text(content)
+                # Set permissions after write
+                os.chmod(str(self._state_file), stat.S_IRUSR | stat.S_IWUSR)
+        else:
+            # Windows - no chmod equivalent, but file is in user's AppData
+            self._state_file.write_text(content)
 
     def clear(self) -> None:
         """Clear all state (logout)."""

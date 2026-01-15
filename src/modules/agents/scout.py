@@ -13,6 +13,10 @@ from src.modules.agents.interface import (
     AgentType,
     BaseAgent,
 )
+from src.modules.agents.context_builder import (
+    ConversationContextBuilder,
+    build_agent_system_prompt,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 
@@ -616,31 +620,19 @@ class ScoutAgent(BaseAgent):
         context: AgentContext,
         user_message: str,
     ) -> AgentResponse:
-        """Handle general scout queries."""
-        # Get shared learning context for personalized responses
-        learning_ctx = context.additional_data.get("learning_context")
+        """Handle general scout queries with conversation awareness."""
+        # Use context builder for conversation history awareness
+        ctx_builder = ConversationContextBuilder(context)
 
-        context_info = ""
-        if learning_ctx:
-            if learning_ctx.primary_goal:
-                context_info += f"- Primary learning goal: {learning_ctx.primary_goal}\n"
-            if learning_ctx.current_focus:
-                context_info += f"- Currently focused on: {learning_ctx.current_focus}\n"
-            if learning_ctx.identified_gaps:
-                context_info += f"- Known gaps: {', '.join(learning_ctx.identified_gaps[:3])}\n"
+        # Build enhanced system prompt with what we know
+        enhanced_system = build_agent_system_prompt(self.system_prompt, context)
 
-        prompt = f"""
-        The user is asking about content discovery or evaluation: "{user_message}"
+        # Build messages with full conversation history
+        messages = ctx_builder.build_messages(user_message)
 
-        {f"User context:{chr(10)}{context_info}" if context_info else ""}
-
-        Help them find or evaluate learning content that aligns with their goals.
-        Be concise and helpful.
-        """
-
-        response = await self._llm.complete(
-            prompt=prompt,
-            system_prompt=self.system_prompt,
+        response = await self._llm.complete_with_history(
+            messages=messages,
+            system_prompt=enhanced_system,
             temperature=0.7,
         )
 

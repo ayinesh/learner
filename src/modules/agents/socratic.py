@@ -13,6 +13,10 @@ from src.modules.agents.interface import (
     BaseAgent,
     ISocraticAgent,
 )
+from src.modules.agents.context_builder import (
+    ConversationContextBuilder,
+    build_agent_system_prompt,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 

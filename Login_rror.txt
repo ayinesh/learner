@@ -1,0 +1,321 @@
+PS D:\Study\App\Learner> python -m src.cli.main start
+<frozen runpy>:128: RuntimeWarning: 'src.cli.main' found in sys.modules after import of package 'src.cli', but prior to execution of 'src.cli.main'; this may result in unpredictable behaviour
+How many minutes do you have? (30): 25
+╭───────────────────────────╮
+│  Starting Regular Session │
+│ Duration: 25 minutes      │
+╰───────────────────────────╯
+⠋ Creating session...
+
+Session started! ID: 277aee7d-453d-4571-a171-c50c2b16c006
+⠋ Planning session...
+
+╭──────────────────────╮
+│ Session Plan         │
+│ Duration: 25 minutes │
+╰──────────────────────╯
+┏━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ #   ┃ Activity           ┃ Duration   ┃ Description                        ┃
+┡━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 1   │   Content Read     │ 12 min     │ Learn new material                 │
+│ 2   │   Feynman Dialogue │ 6 min      │ Explain concepts in your own words │
+│ 3   │ ? Quiz             │ 7 min      │ Test your understanding            │
+│ 4   │   Reflection       │ 2 min      │ Reflect on what you learned        │
+└─────┴────────────────────┴────────────┴────────────────────────────────────┘
+
+Consumption: 12 min | Production: 13 min
+⠼ Preparing...
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Coach ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Great to see you starting your ML fundamentals journey! 🚀    │
+│                                                                                                                                                                                                                                               │
+│ Since you're just beginning, let's establish a solid foundation. Here are some great starting points:    │
+│                                                                                                                                                                                                                                               │
+│ 1. **Core Concepts** - What is ML, types of learning (supervised, unsupervised, reinforcement)    │
+│ 2. **Math Foundations** - Linear algebra, statistics, and probability basics    │
+│ 3. **First Algorithm** - Start with linear regression to see ML in action    │
+│                                                                                                                                                                                                                                               │
+│ What feels most interesting to you right now, or would you like me to recommend where to begin?    │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+Type your responses or 'quit' to end the session.
+
+You: Core concepts
+⠸ Thinking...
+╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────── Curriculum ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Got it! Last question - do you prefer hands-on projects, theory-first learning, or a mix of both?    │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+You: theory first
+⠙ Thinking...
+╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────── Curriculum ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ I've created a personalized learning path for you!    │
+│                                                                                                                                                                                                                                               │
+│ **ML Fundamentals for Technical Professionals - 4 Week Sprint**    │
+│ Duration: 4 weeks (20 hours total)    │
+│                                                                                                                                                                                                                                               │
+│ **Phases:**    │
+│   1. ML Foundations & Problem Framing: Can identify ML problem types and run basic ML code    │
+│   2. Core Algorithms & Data Handling: Can preprocess data, train models, and evaluate performance properly    │
+│   3. Advanced Techniques & Real Projects: Can independently complete ML projects and communicate results    │
+│                                                                                                                                                                                                                                               │
+│ Ready to start? I'll guide you through each phase with quizzes and practice along the way.    │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+You: yes
+⠧ Thinking...
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Coach ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Great! Let's get your ML fundamentals journey started! 🚀    │
+│                                                                                                                                                                                                                                               │
+│ Since you're beginning with machine learning, here are your best first steps:    │
+│                                                                                                                                                                                                                                               │
+│ 1. **Core Concepts** - Learn what ML is, types of learning (supervised, unsupervised, reinforcement)    │
+│ 2. **Math Foundations** - Basic statistics, linear algebra, and probability    │
+│ 3. **Hands-on Practice** - Start with a simple project using Python and scikit-learn    │
+│                                                                                                                                                                                                                                               │
+│ Which would you like to dive into first? Or do you have a specific ML topic you're most curious about?    │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+You: Core concepts
+⠋ Thinking...
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Socratic ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Hey! I keep hearing about this concept everywhere, but I honestly have no idea what it actually means or why people think it's so important. Could you explain it to me like I'm someone who's never encountered it before?    │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+You: I dont know what you are asking can you be specific on what you want from me?
+⠙ Thinking...
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Coach ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ No worries! Let me be more specific. Since your goal is learning ML fundamentals, I'd like to help you get started with a clear first step.    │
+│                                                                                                                                                                                                                                               │
+│ Here are 3 ways we can begin:    │
+│                                                                                                                                                                                                                                               │
+│ 1. **Assess your background** - Quick questions about your math/programming experience to customize your path    │
+│ 2. **Start with core concepts** - Jump into what machine learning actually is and key terminology    │
+│ 3. **Hands-on approach** - Begin with a simple practical example to see ML in action    │
+│                                                                                                                                                                                                                                               │
+│ Which approach sounds most appealing to you right now?    │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+You: Start with the core concepts
+⠼ Thinking...
+╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────── Curriculum ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ I'll help you design a curriculum focused on ML fundamentals, starting with the core concepts. Let me create a structured learning path that builds systematically.    │
+│                                                                                                                                                                                                                                               │
+│ ## ML Fundamentals Learning Path    │
+│                                                                                                                                                                                                                                               │
+│ ### **Phase 1: Mathematical Foundations (3-4 weeks)**    │
+│ **Core concepts to master first:**    │
+│                                                                                                                                                                                                                                               │
+│ **Week 1-2: Statistics & Probability**    │
+│ - Descriptive statistics (mean, median, variance)    │
+│ - Probability distributions (normal, binomial)    │
+│ - Bayes' theorem and conditional probability    │
+│ - Central limit theorem    │
+│ - *Why first*: These underpin how ML algorithms make predictions and handle uncertainty    │
+│                                                                                                                                                                                                                                               │
+│ **Week 3-4: Linear Algebra Essentials**    │
+│ - Vectors and vector operations    │
+│ - Matrices and matrix multiplication    │
+│ - Eigenvalues and eigenvectors (basic understanding)    │
+│ - *Why now*: Most ML algorithms operate on matrices and vectors    │
+│                                                                                                                                                                                                                                               │
+│ ### **Phase 2: Core ML Concepts (4-5 weeks)**    │
+│ **Week 5-6: Supervised Learning Foundations**    │
+│ - What is machine learning? (supervised vs unsupervised vs reinforcement)    │
+│ - Training vs validation vs test sets    │
+│ - Overfitting and underfitting    │
+│ - Cross-validation    │
+│ - Linear regression (implement from scratch)    │
+│                                                                                                                                                                                                                                               │
+│ **Week 7-8: Classification Fundamentals**    │
+│ - Logistic regression    │
+│ - Decision trees    │
+│ - Performance metrics (accuracy, precision, recall, F1)    │
+│ - Confusion matrices    │
+│                                                                                                                                                                                                                                               │
+│ **Week 9: Unsupervised Learning Intro**    │
+│ - K-means clustering    │
+│ - Principal Component Analysis (PCA) basics    │
+│                                                                                                                                                                                                                                               │
+│ ### **Phase 3: Practical Implementation (3-4 weeks)**    │
+│ **Week 10-11: Tools and Practice**    │
+│ - Python basics for ML (NumPy, Pandas)    │
+│ - Scikit-learn fundamentals    │
+│ - Data preprocessing and feature engineering    │
+│                                                                                                                                                                                                                                               │
+│ **Week 12-13: Capstone Project**    │
+│ - End-to-end ML project combining all concepts    │
+│ - Real dataset, problem formulation through evaluation    │
+│                                                                                                                                                                                                                                               │
+│ ## **Key Milestones & Checkpoints:**    │
+│ - **Week 4**: Can explain variance, probability, and matrix operations    │
+│ - **Week 8**: Can build and evaluate a classification model    │
+│ - **Week 13**: Complete working ML project    │
+│                                                                                                                                                                                                                                               │
+│ ## **Why This Sequence?**    │
+│ 1. **Math first**: You need statistical thinking before algorithms make sense    │
+│ 2. **Supervised before unsupervised**: Clearer feedback loop for learning    │
+│ 3. **Theory then tools**: Understanding principles before implementation    │
+│ 4. **Practice throughout**: Each concept includes hands-on exercises    │
+│                                                                                                                                                                                                                                               │
+│ **Time Estimate**: 13 weeks with 8-10 hours/week commitment    │
+│                                                                                                                                                                                                                                               │
+│ Would you like me to dive deeper into any specific phase or adjust the timeline based on your available time commitment?    │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+You: no lets get started
+⠙ Thinking...
+╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────── Curriculum ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Great! Let's design your ML fundamentals curriculum. I need to understand your starting point to create the most effective learning path.    │
+│                                                                                                                                                                                                                                               │
+│ ## Quick Assessment    │
+│                                                                                                                                                                                                                                               │
+│ **Background Check:**    │
+│ - Programming experience? (Python, any language, or complete beginner?)    │
+│ - Math comfort level? (algebra, calculus, statistics - just rough comfort)    │
+│ - Any prior ML exposure? (courses, projects, just concepts?)    │
+│                                                                                                                                                                                                                                               │
+│ **Goal Clarification:**    │
+│ - What's driving your ML interest? (career change, current role, personal projects?)    │
+│ - Any specific ML areas that excite you? (computer vision, NLP, recommendation systems?)    │
+│ - Time commitment? (hours per week, target timeline?)    │
+│                                                                                                                                                                                                                                               │
+│ ## Preliminary Path Overview    │
+│                                                                                                                                                                                                                                               │
+│ While you consider those questions, here's what a solid ML fundamentals curriculum typically looks like:    │
+│                                                                                                                                                                                                                                               │
+│ **Phase 1: Foundation** (3-4 weeks)    │
+│ - Python for data science    │
+│ - Essential math (linear algebra, statistics basics)    │
+│ - Data manipulation and visualization    │
+│                                                                                                                                                                                                                                               │
+│ **Phase 2: Core ML** (4-6 weeks)    │
+│ - Supervised learning algorithms    │
+│ - Model evaluation and validation    │
+│ - Feature engineering basics    │
+│                                                                                                                                                                                                                                               │
+│ **Phase 3: Applied Practice** (3-4 weeks)    │
+│ - End-to-end projects    │
+│ - Real datasets and challenges    │
+│ - Model deployment basics    │
+│                                                                                                                                                                                                                                               │
+│ **Total Timeline: ~10-14 weeks** with 8-10 hours/week    │
+│                                                                                                                                                                                                                                               │
+│ Once I know your background, I can customize the sequence, adjust time allocations, and recommend specific resources that match your learning style and goals.    │
+│                                                                                                                                                                                                                                               │
+│ What's your current experience level in programming and math?    │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+You: Programming experience - nil, Math - algebra , Ml exporure nil
+⠴ Thinking...
+╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────── Curriculum ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Based on your goal to learn ML fundamentals with no programming experience, here's a structured learning path that builds the essential foundations first:    │
+│                                                                                                                                                                                                                                               │
+│ ## Phase 1: Programming Foundation (6-8 weeks)    │
+│ **Goal**: Get comfortable with Python for data manipulation    │
+│                                                                                                                                                                                                                                               │
+│ **Sequence**:    │
+│ 1. **Python Basics** (2 weeks)    │
+│    - Variables, data types, control structures    │
+│    - Functions and basic object-oriented concepts    │
+│    - **Practice**: Simple calculators, text processing    │
+│                                                                                                                                                                                                                                               │
+│ 2. **Data Handling with Python** (2-3 weeks)    │
+│    - NumPy for numerical computing    │
+│    - Pandas for data manipulation    │
+│    - **Practice**: Load, clean, and explore datasets    │
+│                                                                                                                                                                                                                                               │
+│ 3. **Visualization** (1-2 weeks)    │
+│    - Matplotlib/Seaborn basics    │
+│    - **Practice**: Create plots to understand data patterns    │
+│                                                                                                                                                                                                                                               │
+│ 4. **Programming Assessment**: Build a data analysis project    │
+│                                                                                                                                                                                                                                               │
+│ ## Phase 2: Math Bridge (4-5 weeks)    │
+│ **Goal**: Extend your algebra to ML-relevant concepts    │
+│                                                                                                                                                                                                                                               │
+│ **Sequence** (can partially overlap with Phase 1):    │
+│ 1. **Statistics Fundamentals** (2 weeks)    │
+│    - Descriptive statistics, probability basics    │
+│    - Distributions, correlation    │
+│    - **Practice**: Analyze real datasets statistically    │
+│                                                                                                                                                                                                                                               │
+│ 2. **Linear Algebra Essentials** (2-3 weeks)    │
+│    - Vectors, matrices, basic operations    │
+│    - Focus on intuition over proofs    │
+│    - **Practice**: Implement operations in NumPy    │
+│                                                                                                                                                                                                                                               │
+│ ## Phase 3: ML Fundamentals (8-10 weeks)    │
+│ **Goal**: Understand and implement core ML algorithms    │
+│                                                                                                                                                                                                                                               │
+│ **Sequence**:    │
+│ 1. **ML Concepts** (2 weeks)    │
+│    - Supervised vs unsupervised learning    │
+│    - Training/validation/test splits    │
+│    - Overfitting and bias-variance tradeoff    │
+│                                                                                                                                                                                                                                               │
+│ 2. **Regression** (2-3 weeks)    │
+│    - Linear regression (connects to your algebra background)    │
+│    - Polynomial regression, regularization    │
+│    - **Practice**: Predict house prices, stock trends    │
+│                                                                                                                                                                                                                                               │
+│ 3. **Classification** (2-3 weeks)    │
+│    - Logistic regression, decision trees    │
+│    - k-nearest neighbors    │
+│    - **Practice**: Email spam detection, image classification    │
+│                                                                                                                                                                                                                                               │
+│ 4. **Clustering & Evaluation** (2 weeks)    │
+│    - k-means clustering    │
+│    - Model evaluation metrics    │
+│    - **Practice**: Customer segmentation project    │
+│                                                                                                                                                                                                                                               │
+│ **Total Timeline**: 18-23 weeks (4-6 months)    │
+│                                                                                                                                                                                                                                               │
+│ ## Key Success Strategies:    │
+│                                                                                                                                                                                                                                               │
+│ **Directness**: Start coding from week 1 - use Jupyter notebooks to combine learning with practice    │
+│                                                                                                                                                                                                                                               │
+│ **Assessment Checkpoints**:    │
+│ - Week 4: Data analysis project    │
+│ - Week 9: Statistical analysis of a dataset    │
+│ - Week 18: Complete ML project (data collection → model → evaluation)    │
+│                                                                                                                                                                                                                                               │
+│ **High-Impact Focus**: Since you have solid algebra, linear regression will be your gateway drug to ML - it connects familiar math to ML concepts.    │
+│                                                                                                                                                                                                                                               │
+│ Would you like me to elaborate on any specific phase or suggest resources for getting started with Python?    │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+You: ok lets get started then
+⠹ Thinking...
+╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────── Curriculum ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ I'd love to help you create a personalized ML fundamentals curriculum! To design the most effective learning path for you, I need to understand your current situation better.    │
+│                                                                                                                                                                                                                                               │
+│ ## Quick Assessment    │
+│                                                                                                                                                                                                                                               │
+│ **Background & Experience:**    │
+│ - What's your current programming experience? (Python, R, other languages?)    │
+│ - Math background? (statistics, linear algebra, calculus comfort level?)    │
+│ - Any prior exposure to data science or ML concepts?    │
+│                                                                                                                                                                                                                                               │
+│ **Goals & Context:**    │
+│ - What's driving your interest in ML? (career change, current role enhancement, personal projects?)    │
+│ - Any specific ML applications you're most excited about? (computer vision, NLP, recommendation systems, etc.)    │
+│ - Timeline constraints? (weeks, months, specific deadline?)                                                                                                                          │
+│ - Daily/weekly time availability?                                                                                                                                                                                                             │
+│                                                                                                                                                                                                                                               │
+│ **Learning Style:**                                                                                                                                                                                                                           │
+│ - Do you prefer learning through projects, theory first, or a mix?                                                                                                                                                                            │
+│ - Any tools/platforms you're already comfortable with?                                                                                                                                                                                        │
+│                                                                                                                                                                                                                                               │
+│ ## Preview of Your Learning Path Structure                                                                                                                                                                                                    │
+│                                                                                                                                                                                                                                               │
+│ Once I know more about you, I'll create a curriculum with:                                                                                                                                                                                    │
+│                                                                                                                                                                                                                                               │
+│ 📍 **Phase 1: Foundations** - Python + Math essentials                                                                                                                                                                                        │
+│ 📍 **Phase 2: Core ML** - Supervised learning fundamentals                                                                                                                                                                                    │
+│ 📍 **Phase 3: Expansion** - Unsupervised learning + model evaluation                                                                                                                                                                          │
+│ 📍 **Phase 4: Application** - End-to-end projects + specialization                                                                                                                                                                            │
+│                                                                                                                                                                                                                                               │
+│ Each phase will include hands-on projects, spaced review, and checkpoint assessments to ensure solid understanding before advancing.                                                                                                          │
+│                                                                                                                                                                                                                                               │
+│ What can you tell me about your current background and goals?                                                                                                                                                                                 │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

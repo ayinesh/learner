@@ -11,6 +11,7 @@ from src.shared.database import startup, shutdown
 from src.api.middleware.error_handler import setup_exception_handlers
 from src.api.middleware.logging import RequestLoggingMiddleware
 from src.api.middleware.rate_limit import RateLimitMiddleware
+from src.api.middleware.request_size import RequestSizeLimitMiddleware
 from src.api.middleware.security_headers import SecurityHeadersMiddleware
 
 settings = get_settings()
@@ -54,13 +55,18 @@ def create_app() -> FastAPI:
     )
 
     # Configure CORS with restrictive settings
-    # In production, update CORS_ORIGINS env variable with actual frontend domains
-    cors_origins = settings.cors_origins if hasattr(settings, 'cors_origins') else [
-        "http://localhost:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000",
-    ]
+    # In production, set CORS_ORIGINS env variable with actual frontend domains
+    cors_origins = settings.cors_origins_list
+
+    # Security: Warn if no CORS origins configured in production
+    if settings.is_production and not cors_origins:
+        import logging
+        logging.getLogger(__name__).warning(
+            "No CORS_ORIGINS configured in production. "
+            "API will not be accessible from browsers. "
+            "Set CORS_ORIGINS env variable to allow frontend access."
+        )
+
     application.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
@@ -84,12 +90,15 @@ def create_app() -> FastAPI:
     setup_exception_handlers(application)
 
     # Add security headers middleware (outermost - runs last on response)
-    # Disable HSTS in development if CORS origins contain localhost
-    is_development = any("localhost" in origin or "127.0.0.1" in origin for origin in cors_origins)
+    # Disable HSTS in development mode
+    is_development = settings.is_development
     application.add_middleware(
         SecurityHeadersMiddleware,
         enable_hsts=not is_development,
     )
+
+    # Add request size limiting middleware (prevents DoS via large payloads)
+    application.add_middleware(RequestSizeLimitMiddleware)
 
     # Add rate limiting middleware (before logging to avoid logging rate limited requests)
     application.add_middleware(RateLimitMiddleware)

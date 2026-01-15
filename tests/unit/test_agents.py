@@ -710,5 +710,136 @@ class TestMenuOptionDataclass:
         assert option.action is None
 
 
+class TestCurriculumAgentOnboarding:
+    """Tests for CurriculumAgent onboarding flow - prevents regression of repeated onboarding bug."""
+
+    @pytest.fixture
+    def curriculum_agent(self, mock_llm_service):
+        """Create curriculum agent with mock LLM."""
+        from src.modules.agents.curriculum import CurriculumAgent
+        return CurriculumAgent(llm_service=mock_llm_service)
+
+    def test_needs_onboarding_returns_false_when_complete(self, curriculum_agent):
+        """Test that _needs_onboarding returns False when onboarding is already complete.
+
+        This is the critical fix for the bug where users were repeatedly asked
+        for background info even after completing onboarding.
+        """
+        from src.modules.agents.learning_context import OnboardingState, SharedLearningContext
+
+        # Create learning context with minimal info (would normally trigger onboarding)
+        learning_ctx = SharedLearningContext(
+            user_id=uuid4(),
+            primary_goal="Machine Learning",
+        )
+
+        # Create completed onboarding state - this should prevent re-onboarding
+        onboarding = OnboardingState(
+            agent_type="curriculum",
+            is_complete=True,
+            answers_collected={
+                "motivation": "career",
+                "timeline": "6 months",
+                "programming": "beginner",
+                "math": "algebra",
+                "style": "hands-on",
+            },
+        )
+
+        # CRITICAL: Should return False because onboarding is already complete
+        result = curriculum_agent._needs_onboarding(learning_ctx, onboarding)
+        assert result is False, "Completed onboarding should prevent re-onboarding"
+
+    def test_needs_onboarding_checks_all_constraint_fields(self, curriculum_agent):
+        """Test that _needs_onboarding checks all constraint fields, not just timeline/motivation.
+
+        Bug: Original code only checked for 'timeline' or 'motivation' in constraints,
+        but onboarding also collects 'programming_background' and 'math_background'.
+        """
+        from src.modules.agents.learning_context import SharedLearningContext
+
+        # Create context with programming_background but no timeline/motivation
+        # This was incorrectly returning True (needs onboarding) before the fix
+        learning_ctx = SharedLearningContext(
+            user_id=uuid4(),
+            primary_goal="ML",
+            constraints={"programming_background": "beginner"},
+            preferences={"learning_style": "hands-on"},
+        )
+
+        # Should return False because we have goal + constraint + preference
+        result = curriculum_agent._needs_onboarding(learning_ctx, None)
+        assert result is False, "programming_background should count as a valid constraint"
+
+    def test_needs_onboarding_checks_math_background(self, curriculum_agent):
+        """Test that math_background is also recognized as a valid constraint."""
+        from src.modules.agents.learning_context import SharedLearningContext
+
+        learning_ctx = SharedLearningContext(
+            user_id=uuid4(),
+            primary_goal="ML",
+            constraints={"math_background": "algebra"},
+            preferences={"learning_style": "theory-first"},
+        )
+
+        result = curriculum_agent._needs_onboarding(learning_ctx, None)
+        assert result is False, "math_background should count as a valid constraint"
+
+    def test_needs_onboarding_returns_true_when_missing_info(self, curriculum_agent):
+        """Test that _needs_onboarding returns True when key info is missing."""
+        from src.modules.agents.learning_context import SharedLearningContext
+
+        # No constraints, no preferences - should need onboarding
+        learning_ctx = SharedLearningContext(
+            user_id=uuid4(),
+            primary_goal="ML",
+        )
+
+        result = curriculum_agent._needs_onboarding(learning_ctx, None)
+        assert result is True, "Missing constraints/preferences should require onboarding"
+
+    def test_is_continuation_message_detects_affirmations(self, curriculum_agent):
+        """Test that continuation messages are properly detected."""
+        # These should all be detected as continuation messages
+        assert curriculum_agent._is_continuation_message("ok") is True
+        assert curriculum_agent._is_continuation_message("yes") is True
+        assert curriculum_agent._is_continuation_message("let's go") is True
+        assert curriculum_agent._is_continuation_message("let's start") is True
+        assert curriculum_agent._is_continuation_message("let's get started") is True
+        assert curriculum_agent._is_continuation_message("ok lets get started then") is True
+        assert curriculum_agent._is_continuation_message("no lets get started") is True
+        assert curriculum_agent._is_continuation_message("ready") is True
+        assert curriculum_agent._is_continuation_message("proceed") is True
+        assert curriculum_agent._is_continuation_message("sounds good") is True
+
+    def test_is_continuation_message_rejects_topics(self, curriculum_agent):
+        """Test that actual topics are not detected as continuation messages."""
+        # These should NOT be detected as continuation messages
+        assert curriculum_agent._is_continuation_message("Machine Learning") is False
+        assert curriculum_agent._is_continuation_message("I want to learn Python") is False
+        assert curriculum_agent._is_continuation_message("Core concepts") is False
+        assert curriculum_agent._is_continuation_message("theory first") is False
+
+    def test_needs_onboarding_with_learning_path(self, curriculum_agent):
+        """Test that having a learning path prevents re-onboarding."""
+        from src.modules.agents.learning_context import SharedLearningContext, LearningPathStage
+
+        learning_ctx = SharedLearningContext(
+            user_id=uuid4(),
+            primary_goal="ML",
+            learning_path=[
+                LearningPathStage(
+                    topic="Foundations",
+                    status="in_progress",
+                    progress=0.5,
+                    milestone="Understand basics",
+                )
+            ],
+        )
+
+        result = curriculum_agent._needs_onboarding(learning_ctx, None)
+        assert result is False, "Having a learning path should prevent re-onboarding"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

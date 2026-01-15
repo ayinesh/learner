@@ -97,16 +97,43 @@ def start(
         console.print("[yellow]Maximum session is 180 minutes. Setting to 180.[/yellow]")
         minutes = 180
 
-    # Display session info
+    # Load learning context to show restoration info
+    from src.modules.session.restoration_service import get_restoration_service
+
+    restoration_service = get_restoration_service()
+    welcome_ctx = run_async(restoration_service.get_welcome_context(user_id))
+
+    # Display session info with context restoration
     type_emoji = {
         SessionType.REGULAR: "",
         SessionType.DRILL: "",
         SessionType.CATCHUP: "",
     }
 
-    console.print(Panel.fit(
-        f"[bold green]{type_emoji.get(stype, '')} Starting {stype.value.title()} Session[/bold green]\n"
+    # Build session info panel
+    session_info_lines = [
+        f"[bold green]{type_emoji.get(stype, '')} Starting {stype.value.title()} Session[/bold green]",
         f"Duration: {minutes} minutes",
+    ]
+
+    # Show restored context if available
+    if welcome_ctx.primary_goal:
+        session_info_lines.append("")
+        session_info_lines.append(f"[cyan]Goal:[/cyan] {welcome_ctx.primary_goal}")
+        if welcome_ctx.current_focus:
+            session_info_lines.append(f"[cyan]Focus:[/cyan] {welcome_ctx.current_focus}")
+        if welcome_ctx.learning_progress > 0:
+            progress_pct = int(welcome_ctx.learning_progress * 100)
+            session_info_lines.append(f"[cyan]Progress:[/cyan] {progress_pct}%")
+
+    if welcome_ctx.current_streak > 0:
+        streak_text = f"[cyan]Streak:[/cyan] {welcome_ctx.current_streak} days"
+        if welcome_ctx.streak_at_risk:
+            streak_text += " [yellow](keep it going!)[/yellow]"
+        session_info_lines.append(streak_text)
+
+    console.print(Panel.fit(
+        "\n".join(session_info_lines),
         border_style="green",
     ))
 
