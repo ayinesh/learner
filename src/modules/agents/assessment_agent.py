@@ -21,6 +21,11 @@ from src.modules.agents.context_builder import (
     ConversationContextBuilder,
     build_agent_system_prompt,
 )
+from src.modules.agents.handoff_generator import (
+    create_action,
+    create_discovery,
+    create_handoff,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 logger = logging.getLogger(__name__)
@@ -689,6 +694,62 @@ class AssessmentAgent(BaseAgent):
             message = f"{'✓ Correct!' if is_correct else '✗ Not quite.'} {feedback}\n\nQuiz complete! Great effort."
             end_quiz = True
 
+        # Calculate quiz results for handoff if quiz is complete
+        handoff = None
+        actions = None
+        discoveries = None
+
+        if end_quiz:
+            # Gather quiz stats from context
+            total_correct = additional.get("total_correct", 0) + (1 if is_correct else 0)
+            quiz_topic = additional.get("quiz_topic", "general")
+            weak_topics = additional.get("weak_topics", [])
+
+            score = total_correct / total_questions if total_questions > 0 else 0
+
+            # Determine next agent based on performance
+            if score < 0.7 and weak_topics:
+                suggested_next = AgentType.DRILL_SERGEANT
+                suggested_steps = [f"Practice drills on: {', '.join(weak_topics[:3])}"]
+            elif score >= 0.8:
+                suggested_next = AgentType.CURRICULUM
+                suggested_steps = ["Ready to advance to next topic"]
+            else:
+                suggested_next = AgentType.COACH
+                suggested_steps = ["Review quiz results and plan next steps"]
+
+            handoff = create_handoff(
+                from_agent=self.agent_type,
+                summary=f"Quiz completed: {total_correct}/{total_questions} ({score:.0%}). "
+                        f"Topic: {quiz_topic}",
+                outcomes={
+                    "quiz_score": score,
+                    "correct": total_correct,
+                    "total": total_questions,
+                    "topic": quiz_topic,
+                },
+                gaps_identified=weak_topics,
+                proficiency_observations={quiz_topic: score},
+                suggested_next_steps=suggested_steps,
+                suggested_next_agent=suggested_next,
+            )
+
+            actions = [
+                create_action(
+                    self.agent_type,
+                    "complete_quiz",
+                    {
+                        "topic": quiz_topic,
+                        "score": score,
+                        "correct": total_correct,
+                        "total": total_questions,
+                    },
+                ),
+            ]
+
+            if weak_topics:
+                discoveries = create_discovery(needs_support=weak_topics)
+
         return AgentResponse(
             agent_type=self.agent_type,
             message=message,
@@ -702,6 +763,9 @@ class AssessmentAgent(BaseAgent):
             end_conversation=end_quiz,
             # Stay in Assessment for next question, or go to Coach when done
             suggested_next_agent=AgentType.COACH if end_quiz else AgentType.ASSESSMENT,
+            handoff_context=handoff,
+            actions_taken=actions,
+            discoveries=discoveries,
         )
 
     async def _handle_feynman_evaluation(
@@ -738,6 +802,17 @@ class AssessmentAgent(BaseAgent):
 {chr(10).join(f"• {s}" for s in evaluation.suggestions[:2]) if evaluation.suggestions else "• Continue exploring this topic"}
 """
 
+        # Calculate proficiency from overall score
+        overall_score = scores.get("overall", 0.5)
+
+        # Determine suggested next agent based on gaps
+        if evaluation.gaps:
+            suggested_next = AgentType.DRILL_SERGEANT
+            suggested_steps = [f"Practice: {', '.join(evaluation.gaps[:3])}"]
+        else:
+            suggested_next = AgentType.COACH
+            suggested_steps = evaluation.suggestions[:2] if evaluation.suggestions else ["Continue learning"]
+
         return AgentResponse(
             agent_type=self.agent_type,
             message=message.strip(),
@@ -753,7 +828,41 @@ class AssessmentAgent(BaseAgent):
                     "follow_up_topics": evaluation.follow_up_topics,
                 },
             },
-            suggested_next_agent=AgentType.COACH,
+            suggested_next_agent=suggested_next,
+            handoff_context=create_handoff(
+                from_agent=self.agent_type,
+                summary=f"Feynman evaluation completed for '{topic}'. "
+                        f"Overall: {overall_score:.0%}. Mastery: {evaluation.mastery_level}",
+                outcomes={
+                    "completeness": scores.get("completeness", 0),
+                    "accuracy": scores.get("accuracy", 0),
+                    "simplicity": scores.get("simplicity", 0),
+                    "overall": overall_score,
+                    "mastery_level": evaluation.mastery_level,
+                },
+                gaps_identified=evaluation.gaps,
+                proficiency_observations={topic: overall_score},
+                topics_covered=[topic] + evaluation.follow_up_topics[:2],
+                key_points=evaluation.strengths[:3],
+                suggested_next_steps=suggested_steps,
+                suggested_next_agent=suggested_next,
+            ),
+            actions_taken=[
+                create_action(
+                    self.agent_type,
+                    "complete_feynman_evaluation",
+                    {
+                        "topic": topic,
+                        "overall_score": overall_score,
+                        "mastery_level": evaluation.mastery_level,
+                        "gaps_count": len(evaluation.gaps),
+                    },
+                ),
+            ],
+            discoveries=create_discovery(
+                needs_support=evaluation.gaps,
+                strengths=evaluation.strengths,
+            ) if evaluation.gaps or evaluation.strengths else None,
         )
 
     async def _handle_feedback(

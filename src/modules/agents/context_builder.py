@@ -23,7 +23,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.modules.agents.interface import AgentContext
-from src.modules.agents.learning_context import SharedLearningContext, OnboardingState
+from src.modules.agents.learning_context import (
+    AgentDiscoveries,
+    AgentHandoffContext,
+    OnboardingState,
+    SharedLearningContext,
+)
 from src.shared.constants import (
     CONTEXT_HISTORY_WINDOW_SIZE,
     CONTEXT_SUMMARY_MAX_CHARS,
@@ -349,24 +354,121 @@ def build_agent_system_prompt(
 ) -> str:
     """Build an enhanced system prompt with context awareness.
 
-    Injects context summary into the system prompt so the LLM
-    is aware of the user's state from the start.
+    Injects context summary and handoff context into the system prompt
+    so the LLM is aware of the user's state and what previous agents
+    accomplished from the start.
 
     Args:
         base_prompt: The agent's base system prompt
         context: The AgentContext from orchestrator
 
     Returns:
-        Enhanced system prompt with context
+        Enhanced system prompt with context and handoff information
     """
     builder = ConversationContextBuilder(context)
     what_we_know = builder.get_what_we_know()
+
+    # Build handoff section if available
+    handoff_section = _build_handoff_section(context)
+
+    # Build discoveries section if available
+    discoveries_section = _build_discoveries_section(context)
 
     return f"""{base_prompt}
 
 IMPORTANT CONTEXT:
 {what_we_know}
-
+{handoff_section}
+{discoveries_section}
 CRITICAL: Do NOT re-ask questions that have already been answered.
 Continue the conversation naturally based on what's established above.
+If gaps were identified by a previous agent, prioritize addressing those gaps.
 If you need to ask about something, first check if it's already known."""
+
+
+def _build_handoff_section(context: AgentContext) -> str:
+    """Build the handoff section for the system prompt.
+
+    Args:
+        context: The AgentContext containing handoff data
+
+    Returns:
+        Formatted handoff section or empty string
+    """
+    handoff: AgentHandoffContext | None = context.additional_data.get("handoff_context")
+
+    if not handoff:
+        return ""
+
+    parts = [f"\nHANDOFF FROM PREVIOUS AGENT ({handoff.from_agent}):"]
+    parts.append(f"Summary: {handoff.summary}")
+
+    if handoff.gaps_identified:
+        gaps_str = ", ".join(handoff.gaps_identified[:5])  # Limit to 5 for token efficiency
+        parts.append(f"Gaps to address: {gaps_str}")
+
+    if handoff.suggested_next_steps:
+        steps_str = "; ".join(handoff.suggested_next_steps[:3])  # Limit to 3
+        parts.append(f"Suggested actions: {steps_str}")
+
+    if handoff.proficiency_observations:
+        prof_items = list(handoff.proficiency_observations.items())[:5]  # Limit to 5
+        prof_str = ", ".join(f"{topic}: {level:.0%}" for topic, level in prof_items)
+        parts.append(f"Proficiency observations: {prof_str}")
+
+    if handoff.key_points:
+        points_str = "; ".join(handoff.key_points[:3])  # Limit to 3
+        parts.append(f"Key points: {points_str}")
+
+    if handoff.topics_covered:
+        topics_str = ", ".join(handoff.topics_covered[:5])  # Limit to 5
+        parts.append(f"Topics covered: {topics_str}")
+
+    return "\n".join(parts)
+
+
+def _build_discoveries_section(context: AgentContext) -> str:
+    """Build the discoveries section for the system prompt.
+
+    Args:
+        context: The AgentContext containing discoveries data
+
+    Returns:
+        Formatted discoveries section or empty string
+    """
+    discoveries: AgentDiscoveries | None = context.additional_data.get("agent_discoveries")
+
+    if not discoveries:
+        return ""
+
+    parts = ["\nAGENT DISCOVERIES (from previous interactions):"]
+
+    if discoveries.needs_support:
+        needs_str = ", ".join(discoveries.needs_support[:5])
+        parts.append(f"Needs support in: {needs_str}")
+
+    if discoveries.strengths:
+        strengths_str = ", ".join(discoveries.strengths[:5])
+        parts.append(f"Strong in: {strengths_str}")
+
+    if discoveries.misconceptions:
+        # Format misconceptions concisely
+        misc_items = discoveries.misconceptions[:3]
+        misc_strs = [
+            f"{m.get('topic', 'unknown')}: {m.get('misconception', 'unknown')}"
+            for m in misc_items
+        ]
+        parts.append(f"Misconceptions to address: {'; '.join(misc_strs)}")
+
+    if discoveries.learning_observations:
+        # Format observations concisely
+        obs_items = discoveries.learning_observations[:3]
+        obs_strs = [o.get("observation", "") for o in obs_items if o.get("observation")]
+        if obs_strs:
+            parts.append(f"Learning style notes: {'; '.join(obs_strs)}")
+
+    # Only return if we have something beyond the header
+    if len(parts) > 1:
+        return "\n".join(parts)
+
+    return ""

@@ -4,10 +4,17 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 
 from src.shared.datetime_utils import utc_now
+
+if TYPE_CHECKING:
+    from src.modules.agents.learning_context import (
+        AgentAction,
+        AgentDiscoveries,
+        AgentHandoffContext,
+    )
 
 
 class AgentType(str, Enum):
@@ -61,6 +68,17 @@ class AgentResponse:
     menu_options: list[MenuOption] | None = None  # Numbered options for routing
     end_conversation: bool = False
     timestamp: datetime = field(default_factory=utc_now)
+
+    # Handoff context for next agent - enables seamless transitions
+    # Contains summary of what this agent accomplished, gaps identified, etc.
+    handoff_context: "AgentHandoffContext | None" = None
+
+    # Discoveries made during this interaction (misconceptions, learning observations)
+    # These are persisted and shared across all agents
+    discoveries: "AgentDiscoveries | None" = None
+
+    # Actions taken by this agent (for cross-agent coordination and logging)
+    actions_taken: "list[AgentAction] | None" = None
 
 
 @dataclass

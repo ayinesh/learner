@@ -17,6 +17,11 @@ from src.modules.agents.context_builder import (
     ConversationContextBuilder,
     build_agent_system_prompt,
 )
+from src.modules.agents.handoff_generator import (
+    create_action,
+    create_discovery,
+    create_handoff,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 
@@ -443,6 +448,17 @@ class ScoutAgent(BaseAgent):
 
 **Estimated Time:** {evaluation.estimated_time} minutes"""
 
+        # Determine suggested next agent based on action
+        if evaluation.recommended_action == "read_now":
+            suggested_next = AgentType.SOCRATIC  # Test understanding after reading
+            suggested_steps = ["Read the content", "Then explain it back using Feynman technique"]
+        elif evaluation.recommended_action == "skip":
+            suggested_next = AgentType.SCOUT  # Find different content
+            suggested_steps = ["Find alternative content"]
+        else:
+            suggested_next = AgentType.COACH
+            suggested_steps = ["Continue learning session"]
+
         return AgentResponse(
             agent_type=self.agent_type,
             message=message,
@@ -455,6 +471,32 @@ class ScoutAgent(BaseAgent):
                     "timing": evaluation.timing_assessment,
                 },
             },
+            handoff_context=create_handoff(
+                from_agent=self.agent_type,
+                summary=f"Evaluated content '{content.title}': {evaluation.relevance_score:.0%} relevant. "
+                        f"Action: {evaluation.recommended_action.replace('_', ' ')}",
+                outcomes={
+                    "content_title": content.title,
+                    "relevance_score": evaluation.relevance_score,
+                    "recommended_action": evaluation.recommended_action,
+                    "timing": evaluation.timing_assessment,
+                },
+                key_points=evaluation.key_takeaways[:3],
+                topics_covered=content.topics[:3] if content.topics else [],
+                suggested_next_steps=suggested_steps,
+                suggested_next_agent=suggested_next,
+            ),
+            actions_taken=[
+                create_action(
+                    self.agent_type,
+                    "evaluate_content",
+                    {
+                        "content_title": content.title,
+                        "relevance_score": evaluation.relevance_score,
+                        "action": evaluation.recommended_action,
+                    },
+                ),
+            ],
         )
 
     async def _handle_summarization(

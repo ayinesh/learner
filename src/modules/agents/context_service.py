@@ -16,11 +16,16 @@ from uuid import UUID
 from sqlalchemy import text
 
 from src.modules.agents.learning_context import (
+    AgentAction,
+    AgentDiscoveries,
+    AgentHandoffContext,
+    ConsolidatedOnboarding,
     LearningPathStage,
     OnboardingState,
     SharedLearningContext,
 )
 from src.shared.database import get_db_session
+from src.shared.datetime_utils import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -478,6 +483,256 @@ class LearningContextService:
             )
 
         logger.debug(f"Cleared onboarding state for user {user_id}, agent {agent_type}")
+
+    # ===================
+    # Agent Handoff Context Management
+    # ===================
+
+    async def save_handoff_context(
+        self,
+        user_id: UUID,
+        handoff: AgentHandoffContext,
+    ) -> None:
+        """Save handoff context from an agent.
+
+        This persists the handoff context to the database, making it available
+        for the next agent to read. Also updates last_agent_summary for quick access.
+
+        Args:
+            user_id: The user's UUID
+            handoff: The handoff context to save
+        """
+        async with get_db_session() as session:
+            await session.execute(
+                text("""
+                    UPDATE user_learning_context
+                    SET handoff_context = CAST(:handoff AS jsonb),
+                        last_agent_summary = CAST(:summary AS jsonb),
+                        updated_at = NOW()
+                    WHERE user_id = :user_id
+                """),
+                {
+                    "user_id": user_id,
+                    "handoff": json.dumps(handoff.to_dict()),
+                    "summary": json.dumps({
+                        "from_agent": handoff.from_agent,
+                        "summary": handoff.summary,
+                        "timestamp": handoff.timestamp.isoformat(),
+                    }),
+                },
+            )
+
+        logger.debug(f"Saved handoff context from {handoff.from_agent} for user {user_id}")
+
+    async def get_handoff_context(
+        self,
+        user_id: UUID,
+    ) -> AgentHandoffContext | None:
+        """Get the most recent handoff context.
+
+        Args:
+            user_id: The user's UUID
+
+        Returns:
+            AgentHandoffContext if exists, None otherwise
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT handoff_context
+                    FROM user_learning_context
+                    WHERE user_id = :user_id
+                """),
+                {"user_id": user_id},
+            )
+            row = result.fetchone()
+
+            if row and row.handoff_context:
+                data = row.handoff_context if isinstance(row.handoff_context, dict) else json.loads(row.handoff_context)
+                if data:  # Check if not empty dict
+                    return AgentHandoffContext.from_dict(data)
+
+        return None
+
+    async def append_agent_action(
+        self,
+        user_id: UUID,
+        action: AgentAction,
+        max_actions: int = 50,
+    ) -> None:
+        """Append an action to the agent action log.
+
+        Actions are stored in a JSONB array, with the most recent at the front.
+        Older actions are pruned to maintain the max_actions limit.
+
+        Args:
+            user_id: The user's UUID
+            action: The action to append
+            max_actions: Maximum number of actions to retain (default 50)
+        """
+        async with get_db_session() as session:
+            # Prepend new action and trim to max size
+            await session.execute(
+                text("""
+                    UPDATE user_learning_context
+                    SET agent_action_log = (
+                        SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+                        FROM (
+                            SELECT elem
+                            FROM jsonb_array_elements(
+                                CAST(:action AS jsonb) || COALESCE(agent_action_log, '[]'::jsonb)
+                            ) AS elem
+                            LIMIT :max_actions
+                        ) subq
+                    ),
+                    updated_at = NOW()
+                    WHERE user_id = :user_id
+                """),
+                {
+                    "user_id": user_id,
+                    "action": json.dumps([action.to_dict()]),
+                    "max_actions": max_actions,
+                },
+            )
+
+        logger.debug(f"Appended action '{action.action}' by {action.agent_type} for user {user_id}")
+
+    async def get_recent_actions(
+        self,
+        user_id: UUID,
+        limit: int = 10,
+        agent_type: str | None = None,
+    ) -> list[AgentAction]:
+        """Get recent agent actions from the log.
+
+        Args:
+            user_id: The user's UUID
+            limit: Maximum number of actions to return
+            agent_type: Optional filter by agent type
+
+        Returns:
+            List of AgentAction objects, most recent first
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT agent_action_log
+                    FROM user_learning_context
+                    WHERE user_id = :user_id
+                """),
+                {"user_id": user_id},
+            )
+            row = result.fetchone()
+
+            if not row or not row.agent_action_log:
+                return []
+
+            log_data = row.agent_action_log if isinstance(row.agent_action_log, list) else json.loads(row.agent_action_log)
+
+            actions = [AgentAction.from_dict(a) for a in log_data]
+
+            if agent_type:
+                actions = [a for a in actions if a.agent_type == agent_type]
+
+            return actions[:limit]
+
+    async def save_agent_discoveries(
+        self,
+        user_id: UUID,
+        discoveries: AgentDiscoveries,
+        merge: bool = True,
+    ) -> None:
+        """Save agent discoveries, optionally merging with existing.
+
+        Discoveries are persistent observations that accumulate over time,
+        giving all agents a comprehensive picture of the user.
+
+        Args:
+            user_id: The user's UUID
+            discoveries: The discoveries to save
+            merge: If True, merge with existing discoveries (default True)
+        """
+        if merge:
+            existing = await self.get_agent_discoveries(user_id)
+            if existing:
+                # Merge discoveries, avoiding duplicates where possible
+                merged = AgentDiscoveries(
+                    misconceptions=existing.misconceptions + discoveries.misconceptions,
+                    learning_observations=existing.learning_observations + discoveries.learning_observations,
+                    approach_results=existing.approach_results + discoveries.approach_results,
+                    strengths=list(set(existing.strengths + discoveries.strengths)),
+                    needs_support=list(set(existing.needs_support + discoveries.needs_support)),
+                )
+                discoveries = merged
+
+        async with get_db_session() as session:
+            await session.execute(
+                text("""
+                    UPDATE user_learning_context
+                    SET agent_discoveries = CAST(:discoveries AS jsonb),
+                        updated_at = NOW()
+                    WHERE user_id = :user_id
+                """),
+                {
+                    "user_id": user_id,
+                    "discoveries": json.dumps(discoveries.to_dict()),
+                },
+            )
+
+        logger.debug(f"Saved agent discoveries for user {user_id}")
+
+    async def get_agent_discoveries(
+        self,
+        user_id: UUID,
+    ) -> AgentDiscoveries | None:
+        """Get all agent discoveries for a user.
+
+        Args:
+            user_id: The user's UUID
+
+        Returns:
+            AgentDiscoveries if exists, None otherwise
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT agent_discoveries
+                    FROM user_learning_context
+                    WHERE user_id = :user_id
+                """),
+                {"user_id": user_id},
+            )
+            row = result.fetchone()
+
+            if row and row.agent_discoveries:
+                data = row.agent_discoveries if isinstance(row.agent_discoveries, dict) else json.loads(row.agent_discoveries)
+                if data:  # Check if not empty dict
+                    return AgentDiscoveries.from_dict(data)
+
+        return None
+
+    async def clear_handoff_context(
+        self,
+        user_id: UUID,
+    ) -> None:
+        """Clear the handoff context (optional utility method).
+
+        Args:
+            user_id: The user's UUID
+        """
+        async with get_db_session() as session:
+            await session.execute(
+                text("""
+                    UPDATE user_learning_context
+                    SET handoff_context = '{}'::jsonb,
+                        last_agent_summary = NULL,
+                        updated_at = NOW()
+                    WHERE user_id = :user_id
+                """),
+                {"user_id": user_id},
+            )
+
+        logger.debug(f"Cleared handoff context for user {user_id}")
 
 
 # Singleton instance

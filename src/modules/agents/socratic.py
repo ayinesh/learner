@@ -17,6 +17,11 @@ from src.modules.agents.context_builder import (
     ConversationContextBuilder,
     build_agent_system_prompt,
 )
+from src.modules.agents.handoff_generator import (
+    create_action,
+    create_discovery,
+    create_handoff,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 
@@ -334,6 +339,28 @@ class SocraticAgent(BaseAgent, ISocraticAgent):
         state_key = f"{context.user_id}:{context.session_id or 'default'}"
         del self._dialogue_states[state_key]
 
+        # Calculate proficiency based on evaluation
+        overall_score = evaluation.get("overall_score", 5)
+        proficiency = overall_score / 10.0  # Convert 1-10 to 0.0-1.0
+
+        # Deduplicate gaps
+        unique_gaps = list(set(state.gaps_identified))
+
+        # Determine suggested next agent based on gaps
+        if unique_gaps:
+            suggested_next = AgentType.DRILL_SERGEANT  # Practice on weak areas
+        else:
+            suggested_next = AgentType.COACH  # Move forward with confidence
+
+        # Build suggested next steps
+        suggested_steps = []
+        if unique_gaps:
+            suggested_steps.append(f"Practice drills on: {', '.join(unique_gaps[:3])}")
+        if proficiency < 0.7:
+            suggested_steps.append("Review foundational concepts before advancing")
+        else:
+            suggested_steps.append("Ready to proceed to next topic in learning path")
+
         return AgentResponse(
             agent_type=self.agent_type,
             message=response.content,
@@ -341,10 +368,58 @@ class SocraticAgent(BaseAgent, ISocraticAgent):
                 "dialogue_phase": "complete",
                 "evaluation": evaluation,
                 "total_turns": state.turn_count,
-                "gaps_found": state.gaps_identified,
+                "gaps_found": unique_gaps,
             },
             end_conversation=True,
-            suggested_next_agent=AgentType.COACH,
+            suggested_next_agent=suggested_next,
+            # Handoff context for the next agent
+            handoff_context=create_handoff(
+                from_agent=self.agent_type,
+                summary=f"Completed Feynman dialogue on '{state.topic}' over {state.turn_count} turns. "
+                        f"Identified {len(unique_gaps)} knowledge gaps. "
+                        f"Overall understanding: {evaluation.get('mastery_level', 'developing')}",
+                gaps_identified=unique_gaps,
+                proficiency_observations={state.topic: proficiency},
+                topics_covered=[state.topic],
+                key_points=state.key_points_covered[:5],
+                learning_observations=[
+                    f"Engaged in {state.turn_count}-turn Feynman dialogue",
+                    f"Mastery level: {evaluation.get('mastery_level', 'developing')}",
+                ],
+                suggested_next_steps=suggested_steps,
+                suggested_next_agent=suggested_next,
+                outcomes={
+                    "overall_score": overall_score,
+                    "clarity_score": evaluation.get("clarity_score", 5),
+                    "depth_score": evaluation.get("depth_score", 5),
+                    "mastery_level": evaluation.get("mastery_level", "developing"),
+                },
+            ),
+            # Log the action
+            actions_taken=[
+                create_action(
+                    self.agent_type,
+                    "complete_feynman_dialogue",
+                    {
+                        "topic": state.topic,
+                        "turns": state.turn_count,
+                        "gaps_count": len(unique_gaps),
+                        "overall_score": overall_score,
+                    },
+                ),
+            ],
+            # Record discoveries for future agents
+            discoveries=create_discovery(
+                needs_support=unique_gaps,
+                strengths=evaluation.get("strengths", []),
+                learning_observations=[
+                    {
+                        "observation": f"Demonstrated {evaluation.get('mastery_level', 'developing')} level understanding of {state.topic}",
+                        "confidence": 0.8,
+                        "discovered_by": self.agent_type.value,
+                    }
+                ],
+            ) if unique_gaps or evaluation.get("strengths") else None,
         )
 
     async def _identify_gaps(

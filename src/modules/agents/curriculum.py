@@ -20,6 +20,11 @@ from src.modules.agents.context_builder import (
     ConversationContextBuilder,
     build_agent_system_prompt,
 )
+from src.modules.agents.handoff_generator import (
+    create_action,
+    create_discovery,
+    create_handoff,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 
@@ -521,6 +526,11 @@ Duration: {path.get('duration_weeks', 4)} weeks ({path.get('total_hours', 20)} h
 
 Ready to start? I'll guide you through each phase with quizzes and practice along the way."""
 
+        # Extract phases for handoff
+        phases = path.get("phases", [])
+        first_topics = [p.get("title", "Topic") for p in phases[:3]]
+        duration_weeks = path.get("duration_weeks", 4)
+
         return AgentResponse(
             agent_type=self.agent_type,
             message=message,
@@ -528,7 +538,37 @@ Ready to start? I'll guide you through each phase with quizzes and practice alon
                 "action": "path_generated",
                 "learning_path": path,
             },
-            suggested_next_agent=AgentType.COACH,
+            suggested_next_agent=AgentType.SCOUT,  # Find content for first topic
+            # Handoff context for next agent
+            handoff_context=create_handoff(
+                from_agent=self.agent_type,
+                summary=f"Created {duration_weeks}-week learning path with {len(phases)} phases. "
+                        f"Starting with: {first_topics[0] if first_topics else 'introduction'}",
+                outcomes={
+                    "path_created": True,
+                    "duration_weeks": duration_weeks,
+                    "total_hours": path.get("total_hours", 20),
+                    "phases_count": len(phases),
+                },
+                topics_covered=first_topics,
+                suggested_next_steps=[
+                    f"Find learning content for: {first_topics[0]}" if first_topics else "Start with fundamentals",
+                    "Begin with foundational concepts",
+                ],
+                suggested_next_agent=AgentType.SCOUT,
+            ),
+            actions_taken=[
+                create_action(
+                    self.agent_type,
+                    "create_learning_path",
+                    {
+                        "path_title": path.get("title", "Learning Path"),
+                        "duration_weeks": duration_weeks,
+                        "phases_count": len(phases),
+                        "goals": goals[:3],
+                    },
+                ),
+            ],
         )
 
     async def _handle_topic_recommendation(

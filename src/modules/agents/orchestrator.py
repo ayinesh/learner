@@ -114,6 +114,34 @@ class AgentOrchestrator(IAgentOrchestrator):
 
         response = await agent.respond(context, message)
 
+        # Capture and persist handoff data if agent provided it
+        try:
+            if response.handoff_context:
+                await self._context_service.save_handoff_context(
+                    user_id, response.handoff_context
+                )
+                logger.info(
+                    f"Saved handoff from {response.agent_type.value} for user {user_id}: "
+                    f"{response.handoff_context.summary[:50]}..."
+                )
+
+            if response.actions_taken:
+                for action in response.actions_taken:
+                    await self._context_service.append_agent_action(user_id, action)
+                logger.debug(
+                    f"Logged {len(response.actions_taken)} actions from {response.agent_type.value}"
+                )
+
+            if response.discoveries:
+                await self._context_service.save_agent_discoveries(
+                    user_id, response.discoveries, merge=True
+                )
+                logger.info(
+                    f"Saved discoveries from {response.agent_type.value} for user {user_id}"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to save handoff data: {e}")
+
         # Update conversation history
         state.history.append({
             "role": "user",
@@ -469,6 +497,17 @@ class AgentOrchestrator(IAgentOrchestrator):
             logger.warning(f"Failed to fetch learning context: {e}")
             learning_context = None
 
+        # Fetch handoff context from previous agent
+        handoff_context = None
+        recent_actions = []
+        agent_discoveries = None
+        try:
+            handoff_context = await self._context_service.get_handoff_context(user_id)
+            recent_actions = await self._context_service.get_recent_actions(user_id, limit=5)
+            agent_discoveries = await self._context_service.get_agent_discoveries(user_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch handoff data: {e}")
+
         # Build user profile with learning context data
         user_profile = state.context.get("user_profile", {})
         if learning_context:
@@ -501,6 +540,14 @@ class AgentOrchestrator(IAgentOrchestrator):
         additional_data = state.context.copy()
         if learning_context:
             additional_data["learning_context"] = learning_context
+
+        # Include handoff data for cross-agent coordination
+        if handoff_context:
+            additional_data["handoff_context"] = handoff_context
+        if recent_actions:
+            additional_data["recent_actions"] = recent_actions
+        if agent_discoveries:
+            additional_data["agent_discoveries"] = agent_discoveries
 
         return AgentContext(
             user_id=user_id,

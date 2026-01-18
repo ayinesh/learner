@@ -20,6 +20,11 @@ from src.modules.agents.context_builder import (
     ConversationContextBuilder,
     build_agent_system_prompt,
 )
+from src.modules.agents.handoff_generator import (
+    create_action,
+    create_discovery,
+    create_handoff,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 logger = logging.getLogger(__name__)
@@ -840,17 +845,33 @@ Ready to start? I'll guide you through each phase with checkpoints along the way
                     },
                 )
             else:
-                # Drill complete
+                # Drill complete - calculate results
+                exercises_completed = len(drill.exercises)
+                exercises_correct = context.additional_data.get("correct_count", exercises_completed)
+                score = exercises_correct / exercises_completed if exercises_completed > 0 else 0
+                weak_points = context.additional_data.get("weak_points", [])
+
                 del self._active_drills[context.user_id]
                 message = f"""✓ **Correct!** {feedback}
 
 ---
 
-**Drill Complete!** 🎉
+**Drill Complete!**
 
-You've completed all {len(drill.exercises)} exercises in "{drill.title}".
+You've completed all {exercises_completed} exercises in "{drill.title}".
 
 {drill.follow_up_plan.get('integration_practice', 'Keep practicing this skill in real contexts!')}"""
+
+                # Determine next agent based on performance
+                if score >= 0.8:
+                    suggested_next = AgentType.ASSESSMENT  # Ready for quiz
+                    suggested_steps = ["Test knowledge with a quiz", "Move to next topic"]
+                elif weak_points:
+                    suggested_next = AgentType.DRILL_SERGEANT  # More practice
+                    suggested_steps = [f"Practice more on: {', '.join(weak_points[:3])}"]
+                else:
+                    suggested_next = AgentType.COACH
+                    suggested_steps = ["Review session progress"]
 
                 return AgentResponse(
                     agent_type=self.agent_type,
@@ -859,7 +880,45 @@ You've completed all {len(drill.exercises)} exercises in "{drill.title}".
                         "action": "drill_complete",
                         "drill_id": str(drill_id),
                     },
-                    suggested_next_agent=AgentType.COACH,
+                    suggested_next_agent=suggested_next,
+                    handoff_context=create_handoff(
+                        from_agent=self.agent_type,
+                        summary=f"Completed drill '{drill.title}': {exercises_correct}/{exercises_completed} ({score:.0%})",
+                        outcomes={
+                            "drill_score": score,
+                            "correct": exercises_correct,
+                            "total": exercises_completed,
+                            "target_skill": drill.target_skill,
+                        },
+                        gaps_identified=weak_points,
+                        proficiency_observations={drill.target_skill: score},
+                        topics_covered=[drill.target_skill],
+                        suggested_next_steps=suggested_steps,
+                        suggested_next_agent=suggested_next,
+                    ),
+                    actions_taken=[
+                        create_action(
+                            self.agent_type,
+                            "complete_drill",
+                            {
+                                "drill_title": drill.title,
+                                "target_skill": drill.target_skill,
+                                "score": score,
+                                "exercises_completed": exercises_completed,
+                            },
+                        ),
+                    ],
+                    discoveries=create_discovery(
+                        needs_support=weak_points,
+                        approach_results=[
+                            {
+                                "approach": "targeted drill practice",
+                                "worked": score >= 0.7,
+                                "topic": drill.target_skill,
+                                "discovered_by": self.agent_type.value,
+                            }
+                        ],
+                    ) if weak_points or score >= 0.7 else None,
                 )
         else:
             # Wrong answer - retry

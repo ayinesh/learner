@@ -22,6 +22,11 @@ from src.modules.agents.context_builder import (
     ConversationContextBuilder,
     build_agent_system_prompt,
 )
+from src.modules.agents.handoff_generator import (
+    create_action,
+    create_discovery,
+    create_handoff,
+)
 from src.modules.llm.service import LLMService, get_llm_service
 
 logger = logging.getLogger(__name__)
@@ -483,6 +488,10 @@ You're all set! I'll help keep you motivated and on track. Would you like to:
 2. **Start with practice** - Hands-on exercises right away
 3. **Learn some concepts** - Read about the fundamentals first"""
 
+            # Extract motivation and success criteria from answers
+            motivation = answers.get("motivation", "personal interest")
+            success_criteria = answers.get("success_criteria", "mastery")
+
             return AgentResponse(
                 agent_type=self.agent_type,
                 message=message,
@@ -496,6 +505,38 @@ You're all set! I'll help keep you motivated and on track. Would you like to:
                     MenuOption("1", "Build a learning path", AgentType.CURRICULUM, "generate_path"),
                     MenuOption("2", "Start with practice", AgentType.DRILL_SERGEANT, "start_practice"),
                     MenuOption("3", "Learn some concepts", AgentType.SCOUT, "find_content"),
+                ],
+                # Handoff context for the next agent
+                handoff_context=create_handoff(
+                    from_agent=self.agent_type,
+                    summary=f"Set learning goal: {topic}. Motivation: {motivation}",
+                    outcomes={
+                        "goal": topic,
+                        "motivation": motivation,
+                        "success_criteria": success_criteria,
+                    },
+                    topics_covered=[topic],
+                    key_points=[
+                        f"User wants to learn: {topic}",
+                        f"Motivated by: {motivation}",
+                        f"Success looks like: {success_criteria}",
+                    ],
+                    suggested_next_steps=[
+                        "Generate personalized learning path",
+                        "Identify prerequisites and starting point",
+                    ],
+                    suggested_next_agent=AgentType.CURRICULUM,
+                ),
+                actions_taken=[
+                    create_action(
+                        self.agent_type,
+                        "set_learning_goal",
+                        {
+                            "topic": topic,
+                            "motivation": motivation,
+                            "success_criteria": success_criteria,
+                        },
+                    ),
                 ],
             )
 
