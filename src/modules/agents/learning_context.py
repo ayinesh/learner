@@ -228,3 +228,224 @@ class OnboardingState:
             topic=data.get("topic"),
             started_at=datetime.fromisoformat(data["started_at"]) if data.get("started_at") else datetime.utcnow(),
         )
+
+
+@dataclass
+class AgentHandoffContext:
+    """Context passed from one agent to another during handoffs.
+
+    When an agent completes its work and suggests transitioning to another agent,
+    it can provide this context to ensure the next agent has all relevant information
+    about what was accomplished, gaps identified, and suggested next steps.
+
+    Example:
+        Socratic identifies gaps in "derivatives" understanding:
+        handoff = AgentHandoffContext(
+            from_agent="socratic",
+            summary="Completed Feynman dialogue on calculus - found gaps",
+            gaps_identified=["derivative rules", "chain rule"],
+            proficiency_observations={"calculus": 0.6},
+            suggested_next_agent="drill_sergeant",
+        )
+    """
+
+    from_agent: str  # Agent that created this handoff
+    summary: str  # Brief summary of what was accomplished
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+
+    # Gaps or areas needing improvement identified during the interaction
+    gaps_identified: list[str] = field(default_factory=list)
+
+    # Suggested next steps for the receiving agent
+    suggested_next_steps: list[str] = field(default_factory=list)
+
+    # Proficiency observations (topic -> level 0.0-1.0)
+    proficiency_observations: dict[str, float] = field(default_factory=dict)
+
+    # Key points or outcomes from the interaction
+    key_points: list[str] = field(default_factory=list)
+
+    # Topics that were covered
+    topics_covered: list[str] = field(default_factory=list)
+
+    # Suggested next agent (optional hint)
+    suggested_next_agent: str | None = None
+
+    # Additional structured data (agent-specific)
+    outcomes: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "from_agent": self.from_agent,
+            "summary": self.summary,
+            "timestamp": self.timestamp.isoformat(),
+            "gaps_identified": self.gaps_identified,
+            "suggested_next_steps": self.suggested_next_steps,
+            "proficiency_observations": self.proficiency_observations,
+            "key_points": self.key_points,
+            "topics_covered": self.topics_covered,
+            "suggested_next_agent": self.suggested_next_agent,
+            "outcomes": self.outcomes,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AgentHandoffContext":
+        """Create from dictionary."""
+        return cls(
+            from_agent=data.get("from_agent", "unknown"),
+            summary=data.get("summary", ""),
+            timestamp=datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.utcnow(),
+            gaps_identified=data.get("gaps_identified", []),
+            suggested_next_steps=data.get("suggested_next_steps", []),
+            proficiency_observations=data.get("proficiency_observations", {}),
+            key_points=data.get("key_points", []),
+            topics_covered=data.get("topics_covered", []),
+            suggested_next_agent=data.get("suggested_next_agent"),
+            outcomes=data.get("outcomes", {}),
+        )
+
+
+@dataclass
+class AgentDiscoveries:
+    """Persistent discoveries about a user made by agents.
+
+    These observations accumulate over time and are shared across all agents,
+    giving each agent a comprehensive understanding of the user's learning profile.
+
+    Unlike handoff context (which is transient), discoveries persist and grow.
+    """
+
+    # Misconceptions the user has shown
+    # Each entry: {"topic": "...", "misconception": "...", "identified_by": "agent_type", "timestamp": "..."}
+    misconceptions: list[dict[str, Any]] = field(default_factory=list)
+
+    # Observations about how the user learns
+    # Each entry: {"observation": "...", "context": "...", "identified_by": "agent_type"}
+    learning_observations: list[dict[str, Any]] = field(default_factory=list)
+
+    # What teaching approaches worked or didn't work
+    # Each entry: {"approach": "...", "worked": bool, "context": "...", "identified_by": "agent_type"}
+    approach_results: list[dict[str, Any]] = field(default_factory=list)
+
+    # Topics where user has demonstrated strength
+    strengths: list[str] = field(default_factory=list)
+
+    # Topics where user needs additional support
+    needs_support: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "misconceptions": self.misconceptions,
+            "learning_observations": self.learning_observations,
+            "approach_results": self.approach_results,
+            "strengths": self.strengths,
+            "needs_support": self.needs_support,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AgentDiscoveries":
+        """Create from dictionary."""
+        return cls(
+            misconceptions=data.get("misconceptions", []),
+            learning_observations=data.get("learning_observations", []),
+            approach_results=data.get("approach_results", []),
+            strengths=data.get("strengths", []),
+            needs_support=data.get("needs_support", []),
+        )
+
+
+@dataclass
+class AgentAction:
+    """A logged action taken by an agent.
+
+    Actions are stored chronologically to provide a record of what agents
+    have done, enabling cross-agent coordination and debugging.
+    """
+
+    agent_type: str  # Which agent took this action
+    action: str  # Brief description of the action
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+
+    # Additional details about the action
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "agent_type": self.agent_type,
+            "action": self.action,
+            "timestamp": self.timestamp.isoformat(),
+            "details": self.details,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AgentAction":
+        """Create from dictionary."""
+        return cls(
+            agent_type=data.get("agent_type", "unknown"),
+            action=data.get("action", ""),
+            timestamp=datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.utcnow(),
+            details=data.get("details", {}),
+        )
+
+
+@dataclass
+class ConsolidatedOnboarding:
+    """Consolidated onboarding data across all agents.
+
+    Instead of each agent managing its own onboarding, this provides
+    a unified view of all information gathered during onboarding.
+    """
+
+    # The user's primary learning goal
+    goal: str | None = None
+
+    # User's background/experience level
+    background: str | None = None
+
+    # Preferred learning style
+    learning_style: str | None = None
+
+    # Time available for learning
+    time_commitment: str | None = None
+
+    # Deadline or timeline
+    timeline: str | None = None
+
+    # Whether consolidated onboarding is complete
+    is_complete: bool = False
+
+    # Which agents have completed their onboarding portions
+    completed_by_agents: list[str] = field(default_factory=list)
+
+    # Additional collected data
+    additional_data: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "goal": self.goal,
+            "background": self.background,
+            "learning_style": self.learning_style,
+            "time_commitment": self.time_commitment,
+            "timeline": self.timeline,
+            "is_complete": self.is_complete,
+            "completed_by_agents": self.completed_by_agents,
+            "additional_data": self.additional_data,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ConsolidatedOnboarding":
+        """Create from dictionary."""
+        return cls(
+            goal=data.get("goal"),
+            background=data.get("background"),
+            learning_style=data.get("learning_style"),
+            time_commitment=data.get("time_commitment"),
+            timeline=data.get("timeline"),
+            is_complete=data.get("is_complete", False),
+            completed_by_agents=data.get("completed_by_agents", []),
+            additional_data=data.get("additional_data", {}),
+        )
